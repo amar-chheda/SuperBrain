@@ -16,7 +16,7 @@ flowchart TD
     Ports --> Infra
 
     Infra --> Postgres[(PostgreSQL + pgvector)]
-    Infra --> LocalLLM[Local Model Runtime\n(Ollama/LM Studio)]
+    Infra --> LocalLLM["Local Model Runtime<br/>(Ollama/LM Studio)"]
 
     Scheduler[Scheduler] --> App
     App --> QA[Grounded QA Use Case]
