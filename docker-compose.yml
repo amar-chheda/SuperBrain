@@ -1,0 +1,32 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: superbrain-postgres
+    environment:
+      POSTGRES_DB: superbrain
+      POSTGRES_USER: superbrain
+      POSTGRES_PASSWORD: superbrain
+    ports:
+      - "5432:5432"
+    volumes:
+      - superbrain_pg_data:/var/lib/postgresql/data
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: superbrain-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: superbrain-grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+volumes:
+  superbrain_pg_data:
