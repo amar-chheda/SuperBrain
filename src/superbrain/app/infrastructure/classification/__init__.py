@@ -1,1 +1,0 @@
-"""Topic classification adapters."""
