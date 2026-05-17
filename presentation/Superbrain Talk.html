@@ -1,0 +1,2113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Superbrain — Things I Learned Building a Local-Only Agentic AI System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Fira+Code:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<script type="application/json" id="speaker-notes">["Hi everyone, I'm Amar. I spend most of my time training models — the kind with loss curves and confusion matrices, not the kind that responds with 'great question!' This talk is the story of what happened when, after years in the old world, I decided to actually sit down and build something in the new one. Not read about it. Not run a notebook. Build it end-to-end. The thing I built is called Superbrain. It's a local-only agentic AI system. And it broke most of my mental models on the way to working. So: what I learned, what surprised me, what I'd tell myself if I could start over. That's the whole show.","For the last several years, this is what my job looked like. You train a model. You measure it. You ship it. The inputs are yours, the outputs are yours, performance is a number you can put on a leaderboard and defend in a meeting. And critically — behaviour is deterministic by design. Same input, same weights, same answer, every time. There's something deeply comforting about that. The math owns the system, and you own the math. If anything is wrong, you can in principle find it.","And the way you make accuracy *yours* is by being a specialist. You don't grab a general-purpose anything — you fine-tune the model for your task. You curate the data. You define the metrics that matter for your domain. You build up an intuition for what the thing can and can't do. The cost of being wrong is a bad F1 score on a holdout set — unpleasant, but at least it's quantitative. You stare at the confusion matrix until it tells you what to fix. That was my world. Specialised. Accountable. Slightly cranky.","Then somewhere around 2022 the world handed us foundation models. One giant model, billions of parameters, vaguely shaped like 'general' intelligence. And suddenly the model is the one deciding what counts as a good answer. My job description quietly changed: instead of writing code, I'm writing instructions in English. I prompt. I pray. I evaluate... differently. And the question I genuinely could not answer was this: the benchmarks say it's great — but does it work for *my* task? Coming from where I came from, that question was deeply uncomfortable. Because in my world, 'great in general' is not a thing you ever shipped.","So I started actually building, and the first surprise was: agentic AI is not a chatbot. It's not really even an LLM with extra steps. It's a system that perceives an input, decides on an action, executes it, and observes the result. The model is not the product. The workflow is the product. And what hit me — pretty hard — is that this is much closer to distributed systems engineering than to data science. You're designing flows, you're defining contracts, you're thinking about failure modes. The bit where the model thinks is one node in a much bigger graph.","Once you see that, this clicks: the responsibility didn't disappear when foundation models arrived. It moved. In the old world I owned accuracy at the model level — training data, hyperparameters, loss curves. In the new world I own accuracy at the system level. Prompt design. Retrieval quality. Where the boundaries are. What I do when output is malformed. The model is general; the system has to be specific. That part is on me, exactly like before. The seam just lives somewhere else.","Quick technical aside, because I want everyone on the same page. How does a small language model get made? You start with the same pre-training recipe an LLM uses, just smaller. Then you can apply distillation — a big teacher transfers reasoning to a small student. You can prune redundant parameters. You can quantize — drop FP32 weights down to INT4 — and the model gets dramatically smaller and faster with surprisingly little quality loss. LoRA lets you bolt task-specific adapters on without retraining everything. Stack these techniques and you can pull a capable instruction-following model down into something that runs on a laptop. Which a few years ago was science fiction.","So which do you reach for? Generalist or specialist? The answer I kept arriving at is 'yes, both.' Generalists — your big LLMs — are great at open-ended reasoning and synthesis. Specialists — SLMs fine-tuned for one job — are fast, cheap, predictable, and they will absolutely outperform a general model on a narrow task you care about. The real insight, the one I keep coming back to: don't pick. Route. Send each task to the right size of model. That's the architecture.","Latency is the thing I think we under-discuss as engineers. We treat it as a UX concern. It's not. It's a system design constraint. Cloud LLMs are 500 milliseconds to 5 seconds per call. Local SLMs on a decent laptop are 1 to 10 seconds. In an agentic loop where you're chaining four or five calls together, this compounds fast. So the design principle in Superbrain is: put the latency-sensitive steps on smaller models. Save the 8B for the thing that only an 8B can do. Embedding generation is sub-200 milliseconds. Classification is under a second and a half. Answer generation, where you actually need the reasoning, gets the budget.","So why did I commit to small, local models? Four reasons. Privacy: my data, my hardware, nobody else's logs. Cost: no per-token bill at scale. Forcing function — and this is the one that surprised me — small models force better system design, and that ended up being the most valuable constraint I imposed on myself. And observability: I control every call, every log, every retry. No black box. The middle one — forcing function — is honestly the reason this talk exists, so I want to spend the next few slides earning that claim.","But first, the boring cost slide, because it's worth saying out loud. Run an ingestion pipeline at decent volume — say a thousand articles a day at fifteen-hundred tokens each — and you're looking at one and a half billion tokens a month. On GPT-4o at current prices that's about seventy-five hundred dollars a month *just for ingestion*. Before you ask any questions. Before you run a digest. The enterprise number is way worse — Gartner pegs serious workloads at half a million to two million a year. Llama 3.1 8B on my machine costs me electricity. That's the entire variable cost. The cost argument doesn't need a chart — it needs a sanity check.","There's an NVIDIA paper from 2025 I want to flag because it sharpened my thinking. The headline claim: small models are the future of agentic AI. Not 'cute toys' — the future. Their reasoning is straightforward: agents make many sequential calls, and cost and latency compound at every step. If you save 5× per call across 10 calls, you've saved 50×. The benchmark they care about is Berkeley function-calling, not general NLP. And the punchline: if you evaluate on the *agentic* benchmarks — tool use, structured output — SLMs go toe-to-toe with much bigger models. Different benchmark, different story. That's the citation that backed up what I was already seeing.","None of this would have been possible without the open-weights moment. A few years ago, if you wanted an instruction-following model that didn't embarrass you, you needed a cloud API. Llama 2 cracked the door open in 2023. Mistral pushed it further. The thing that genuinely changed my life was Phi-3 mini — 3.8 billion parameters, runs comfortably on a laptop, surprisingly competent. And by 2025, with Llama 3.3 and Phi-4, you've got actual production-grade instruction-following at the 7B scale on consumer hardware. That's the inflection point. That's why Superbrain exists as a local system at all.","So the architecture I kept coming back to is the orchestra metaphor. You've got a conductor — an LLM — who handles the high-level, the synthesis, the work that genuinely needs broad reasoning. You've got section players — SLMs — who do the routine, repetitive, structured stuff. The conductor is rare and expensive; you don't use them for everything. The section players are frequent and cheap. Gartner is projecting that by 2027, task-specific model adoption is going to be three times LLM adoption. That tracks with what I've built, what I've read, and what I think the enterprise architecture of the next few years actually looks like.","OK, here's the forcing-function claim, paid in cash. When you're working with a small model, you cannot rely on it being clever. So your prompts have to be precise. Your workflow boundaries have to be explicit — no 'figure it out.' Your output formats have to be validated, because the model *will* hand you something weird. And your fallbacks have to be engineered, because there is no model cleverness to bail you out. Every one of those constraints made my system better. If I'd started with a frontier model, I would have written four vague prompts, called it agentic, and shipped something that fell over the moment the model had a bad day.","There's an InfoWorld piece — also 2024 — that frames this as 'division of labour.' LLM as the senior advisor: rare consultations, high-level guidance. SLMs as the specialist teams doing the bulk of the work. The key design question they call out, and I think it's the right one, is: how do I route and compose multiple model sizes? Not 'which model should I use', but 'how do I orchestrate'. And the headline number: ninety percent cost reduction on high-volume repetitive tasks by switching them from cloud LLMs to local SLMs. That's not a typo. That's the order-of-magnitude shift.","OK. What did I actually build. Superbrain is a fully local agentic system. You give it something — a URL, a PDF, raw text — through one of three entry points: a REST API, a Telegram bot, or a CLI. It crawls, chunks, embeds, classifies, and stores. You can ask it questions and it gives you grounded answers with citations. You can trigger a daily digest and it groups related articles by topic and summarises them. Storage is a single Postgres 16 database — relational, vector, and full-text search all in one place. Inference goes through Ollama, locally. Three models. No cloud AI dependency. That's the whole shape.","Three local models doing four agentic roles. Llama 3.1 8B handles the heavy lifting — chunking decisions, grounded answers, digest summaries. Phi-3 mini does classification. That choice — using a 3.8B model instead of llama for classification — saved us about four times the latency on that step. Worth saying again: same task, four times faster, no quality loss for what we needed. And nomic-embed-text does our semantic embeddings — 768-dimensional, purpose-built for retrieval. The lesson on this slide is the whole talk in one line: right model for the right job.","This is the simplest agent in the system, and it's a useful reference. Before we split an article into chunks, we ask llama 3.1 to look at the text and pick the best chunking strategy. It returns JSON: semantic, recursive, or fixed. Three options, total. And critically — every single LLM call in this system has a fallback. If the JSON is malformed, the key is missing, the strategy isn't one we recognise — we silently default to fixed. The pipeline never blocks on a bad model response. That's not a nice-to-have. That's the only way you trust a local model in production. Design for failure. Every call needs a fallback.","Classification is where I learned my favourite trick. You don't pass topics to the model as UUIDs. You pass them as integers. One, two, three, four. The model returns 'topic_id: 1, confidence: high.' Then on the way back, the parser maps integer one to the real UUID. And here's the bit that makes me happy: if the model returns 'topic_id: 99', that integer is not in our map. So it gets silently dropped. The model can't invent a topic ID, because every valid ID was in the prompt. Hallucination didn't get statistically reduced. It got physically eliminated. Structure the prompt so the bad outcome is impossible, not just unlikely.","This is the most complex flow in the system, and it's the one I'm proudest of. Question comes in. We embed it. Vector search and BM25 search in parallel, top 20 each. We fuse them with reciprocal rank fusion. Then — and this is the bit that matters — we *gate*. If we don't have at least two evidence chunks, or if the top chunk's score is below threshold, we abort. We don't even call the LLM. We just say 'I don't have enough information.' If we do have evidence, we generate. Then we parse the SOURCES line, and any chunk ID the model invented that wasn't actually in the evidence we gave it — we drop. An honest 'I don't know' beats a confident wrong answer every single time. Build the gate, not just the generator.","Quick technical aside on reciprocal rank fusion, because I think it's underused. Vector search finds semantically similar chunks. BM25 finds exact keyword matches. Both are useful. Neither is always right. RRF gives you a clean way to combine the two: each chunk gets a score equal to the sum of one over sixty plus its rank in each list. A chunk that ranks first in vector and third in BM25 gets a score about double what it would get in either list alone. The math is two lines of code. The win is that you don't have to choose between semantic and lexical retrieval — you get both. And Postgres handles both. We don't have a separate vector database. We don't have Elasticsearch. One store.","OK, brief change of register. You've seen the architecture. You've seen how the agentic flows work at their best. Now I want to tell you about what it actually felt like to build it — the four things that broke in interesting or instructive ways. The failures are more educational than the successes. The success stories are in the docs. The failure stories are in the git blame and the late-night debugging sessions. Four failures. Each one taught me something I couldn't have learned any other way.","Let me tell you about a model we designed around but never shipped with. The architecture doc for Superbrain has a note right there in the source: 'swap to lfm2-7b when available.' LiquidAI had announced LFM — Liquid Foundation Models — and they looked genuinely promising for our digest use case. Smaller than llama3.1 8B, designed for efficiency, supposedly superior at constrained generation tasks. By the time we were building, the Ollama-compatible version wasn't stable for production pipelines. So we kept llama3.1:8b as the placeholder that became permanent. The comment is still in the codebase. The lesson: build to what ships today, not to what's announced. Don't let your architecture depend on a model that isn't in your hands yet.","phi3:mini became our classification workhorse. But the first iteration of the classifier was broken before it even hit the test suite. The model returned confidence: very_high — a value we never defined. It wrapped the JSON in markdown code fences we had to strip before parsing. It sometimes returned an object like {'matches': [...]} instead of the bare array. All three of these required defensive fixes in the parser. Coerce unknown confidence values to low. Strip the fences. Handle the object wrapper. Here's the thing: the model wasn't broken. It was interpreting our prompt reasonably. We just hadn't given it tight enough constraints. Every one of those fixes was actually fixing our prompt design, not the model.","The scheduler bug is my favourite story to tell because it perfectly illustrates the kind of problem you don't have when you're using a cloud API. APScheduler fires a job at 7am UTC. The job builds a use case. The use case calls the database. The session is closed. The first fix: build the use case at startup with a reusable session. That session was already closed by the time the job ran. The second fix: use a factory, create the session at job time. Also broken — the async context manager closed the session before the downstream code finished using it. The final fix: a closure in main.py that opens a fresh session per execution and keeps it alive for the entire pipeline run. Three attempts. One lesson: async resource lifecycle is not trivial, and every 'it should work this way' assumption is a potential midnight debugging session.","The first iteration of the QA pipeline used GPT-4o. I know, I know — local-only. I was doing an architecture spike. And it was beautiful. One prompt, no careful engineering, citations were great, nothing hallucinated. Then I swapped in llama3.1 8B. Immediately: the model cited sources that weren't in the context, returned chunk IDs it invented, and answered questions even when the evidence was thin. Same prompt, completely different failure mode. The fix was three pieces: the evidence sufficiency gate, which refuses to call the LLM if the retrieved evidence is too weak; the SOURCES line requirement, which forces the model to declare its sources explicitly; and chunk ID validation, which checks every cited ID against the actual evidence we gave it. The GPT-4o version worked because it was smart enough to not need guardrails. The llama version forced me to build guardrails that made the whole system more trustworthy than the GPT-4o version ever was.","OK, lessons. The biggest misconception, by far, when people hear 'agentic' — they think autonomous. A true autonomous, do-anything agent is hard to build and harder to trust. What actually works — what I've actually shipped — is bounded, observable, recoverable flows. Each LLM call has a specific input format, an expected output schema, a validation step, and a fallback. The 'agentic' part isn't the LLM being clever. It's the orchestration logic *around* the LLM being correct. The dream is one model making all the decisions. The reality is a directed graph of bounded steps with explicit error paths.","Lesson two: the prompt is the contract. Treat it like one. A vague prompt to a small model produces garbage. A structured prompt with an explicit output schema produces a reliable pipeline. Every prompt in Superbrain specifies four things: the role the model is playing, the task in concrete terms, the exact output format expected, and what to do if it can't complete the task. The before-and-after on this slide is real. 'Classify this article' is a recipe for parsing free text and losing. The contract version — role, task, schema, fallback — is the recipe for a pipeline you can actually trust.","Lesson three is the one I want to land on hardest. Constraints are features in disguise. Phi-3 mini cannot do complex multi-step reasoning in one prompt. It just can't. And that limitation *forced* me to break the work into explicit stages, write smaller more focused prompts, and validate structured output at every step. The result is a more debuggable, observable, reliable system than I would have built if I'd had a frontier model to lean on. The quote on the right is the one I want you to take home. 'If your system only works with a powerful model, you haven't built a system — you've built a prompt.' I wish I'd known that on day one.","Observability. Without it, you're guessing. With it, you can improve. That's the whole pitch. Every LLM call in Superbrain is logged — model, prompt template, latency, status, the entity it was working on. Every QA query, with retrieval and answer latency broken out. Every pipeline run with success and failure counts. p50, p95, p99 on the metrics that matter. An eval harness that scores recall, URL coverage, citation presence, groundedness — runs on demand, no human labellers required. None of this is glamorous. All of this is how you ship something you actually trust. Don't put it off. Build the metrics surface alongside the feature, not after.","Lesson five, and this might be the most actionable thing in the talk if you're working on RAG. Retrieval quality is answer quality. The LLM can only cite what you gave it. If retrieval is bad, evidence is bad, answer is bad — or it aborts. Most QA quality problems are not generation problems. They're retrieval problems. Investments that paid off massively for me: hybrid retrieval, RRF fusion, per-chunk embeddings instead of per-article, FTS index on chunk content. Things that turned out to be mostly noise: tweaking prompts, tuning temperature, swapping in a bigger generation model. So if you're going to budget your QA improvement time, spend eighty percent of it on retrieval. The generator is the easy part.","Lesson six. Privacy isn't a constraint you work around. It's a feature your users pay for. Local-only means the data never leaves your hardware, which unlocks a bunch of use cases the cloud APIs literally cannot touch. Medical records. Legal documents. Source code. Defense. Government. Air-gapped environments. Regulated industries. Beyond that — no rate limits, no quota, no per-token bill, predictable latency bounded by your hardware not someone else's SLA. The whole equation changes. 'Local' isn't the compromise you make when cloud is too expensive. For a lot of customers, local is the only version that ships.","If you remember nothing else from this talk, this is the picture I want in your head. Five layers. Entry points — how the world reaches you: API, bot, CLI, scheduler. Orchestration — bounded flows with explicit contracts. LLM calls — right-sized model, validated output. Retrieval — hybrid, vector plus BM25, RRF fusion. And storage — one Postgres, relational and vector and full-text search all in one place. Each layer has one responsibility. The seams between them are explicit. That's the whole architecture, on one slide.","Concrete checklist for picking between a big and a small model. Repetitive, high-volume? SLM. Structured output required? SLM. Latency budget under two seconds? SLM. Multi-step nuanced reasoning? LLM. One-off creative or synthesis? LLM. And the bottom row is the one I want to underline: if you're doing both in a pipeline — which you almost always are once you start composing — the answer is always orchestrate. There's no version of this where you pick one. The interesting design problem isn't 'which model.' It's how they talk to each other.","Three things I'd tell myself if I were starting Superbrain today. One — design the prompts before you write a line of code. The prompt is the spec. If you can't write it out clearly, you don't understand the task. Two — pick the smallest model that works for each step. Use the big model only where it earns its cost. Most of your pipeline does not need a frontier model. Three — and this is the one I most wish I'd done — build the eval harness first, not last. You cannot improve what you do not measure. I lost weeks because I shipped features before I shipped the way to tell whether they worked.","That's the talk. Coming from the world I came from, the new paradigm felt almost alien for a while. But the longer I built, the more I realised: it's still engineering. It still wants contracts and tests and observability and small, debuggable components. It just has different seams. The model thinks; you orchestrate. That's the whole shift. If you want to look at the code, the Superbrain repo is on GitHub — link's right there. The NVIDIA paper and the InfoWorld piece are the two pieces of writing that shaped my thinking the most. And Ollama is the runtime that makes the local part possible. Thank you. I'm Amar. Happy to take questions."]</script>
+
+<style>
+:root {
+  --bg: #0F1419;
+  --surface: #1A1F26;
+  --surface-2: #232932;
+  --border: #2A323C;
+  --text: #D4D2CC;
+  --muted: #8B8980;
+  --dim: #5C5A55;
+  --amber: #E8B14C;
+  --amber-dim: #8C6A2E;
+  --teal: #5BC2A8;
+  --teal-dim: #2F6A5B;
+  --bad: #C26B5B;
+
+  --type-mega: 168px;
+  --type-display: 112px;
+  --type-title: 64px;
+  --type-subtitle: 44px;
+  --type-body: 34px;
+  --type-small: 28px;
+  --type-eyebrow: 24px;
+  --type-code: 26px;
+  --type-tiny: 24px;
+
+  --pad-top: 92px;
+  --pad-bottom: 92px;
+  --pad-x: 110px;
+  --gap-title: 56px;
+  --gap-item: 28px;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html, body { margin: 0; padding: 0; background: #000; color: var(--text); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+
+deck-stage { background: #000; }
+deck-stage section { background: var(--bg); color: var(--text); font-family: var(--font-sans); overflow: hidden; }
+
+/* Slide frame */
+.frame {
+  position: absolute; inset: 0;
+  padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+  box-sizing: border-box;
+  display: flex; flex-direction: column;
+}
+
+/* Eyebrow */
+.eyebrow {
+  font-size: var(--type-eyebrow); letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--muted); font-weight: 500;
+  display: flex; align-items: center; gap: 18px;
+  white-space: nowrap;
+}
+.eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); display: inline-block; flex-shrink: 0; }
+.eyebrow .act { color: var(--amber); }
+
+/* Headings */
+.h-title { font-size: var(--type-title); font-weight: 600; line-height: 1.08; letter-spacing: -0.02em; margin: 0; color: var(--text); text-wrap: balance; }
+.h-sub { font-size: var(--type-subtitle); font-weight: 500; line-height: 1.15; letter-spacing: -0.015em; margin: 0; color: var(--text); }
+.h-body { font-size: var(--type-body); line-height: 1.35; margin: 0; font-weight: 400; }
+.h-small { font-size: var(--type-small); line-height: 1.45; margin: 0; font-weight: 400; color: var(--muted); }
+.h-mega { font-size: var(--type-mega); font-weight: 700; line-height: 0.95; letter-spacing: -0.04em; margin: 0; color: var(--amber); }
+
+.amber { color: var(--amber); }
+.teal { color: var(--teal); }
+.muted { color: var(--muted); }
+.dim { color: var(--dim); }
+.mono { font-family: var(--font-mono); }
+.tabular { font-variant-numeric: tabular-nums; }
+
+.title-row { display: flex; flex-direction: column; gap: 24px; margin-bottom: var(--gap-title); }
+.body-grow { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; }
+
+/* Footer slide-number + name (the deck-stage adds its own number; we use this for speaker line) */
+.footer {
+  position: absolute; left: var(--pad-x); right: var(--pad-x); bottom: 38px;
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 24px; color: var(--dim); letter-spacing: 0.16em; text-transform: uppercase;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.footer .crumb { color: var(--muted); }
+
+/* Reusable cards / boxes */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 36px 40px; }
+.card.amber { background: rgba(232,177,76,0.10); border-color: rgba(232,177,76,0.35); }
+.card.teal { background: rgba(91,194,168,0.08); border-color: rgba(91,194,168,0.30); }
+
+.kbd { display: inline-block; padding: 6px 14px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); font-family: var(--font-mono); font-size: 24px; color: var(--text); }
+
+/* Callout */
+.callout {
+  background: rgba(232,177,76,0.08);
+  border-left: 4px solid var(--amber);
+  padding: 28px 36px;
+  font-size: var(--type-small);
+  line-height: 1.45;
+  color: var(--text);
+  border-radius: 0 12px 12px 0;
+}
+.callout .label { font-size: 24px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--amber); font-weight: 600; display:block; margin-bottom: 10px; }
+
+/* Code */
+pre.code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px 30px;
+  font-family: var(--font-mono);
+  font-size: var(--type-code);
+  line-height: 1.5;
+  color: var(--text);
+  overflow: hidden;
+  margin: 0;
+  white-space: pre;
+}
+pre.code .c { color: var(--dim); font-style: italic; }
+pre.code .k { color: var(--amber); }
+pre.code .s { color: var(--teal); }
+pre.code .n { color: var(--text); }
+pre.code .p { color: var(--muted); }
+
+/* Pipeline boxes */
+.pipe { display: flex; align-items: center; gap: 18px; font-family: var(--font-mono); font-size: 24px; }
+.pipe .step { padding: 18px 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); }
+.pipe .arr { color: var(--muted); font-size: 28px; }
+
+/* Tags */
+.tag {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.tag.amber { background: rgba(232,177,76,0.14); border-color: rgba(232,177,76,0.40); color: var(--amber); }
+.tag.teal { background: rgba(91,194,168,0.12); border-color: rgba(91,194,168,0.36); color: var(--teal); }
+
+/* Number bar */
+.bignum-row { display: flex; align-items: baseline; gap: 32px; }
+.bignum-row .num { font-size: 140px; font-weight: 700; line-height: 0.9; letter-spacing: -0.04em; }
+.bignum-row .lbl { font-size: var(--type-body); color: var(--muted); max-width: 600px; line-height: 1.3; }
+
+/* Background grid */
+.grid-bg { position: absolute; inset: 0; pointer-events: none; opacity: 0.30;
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 80px 80px;
+}
+
+/* Tweaks toggle */
+.code-hidden pre.code { filter: blur(8px); opacity: 0.55; }
+</style>
+</head>
+<body>
+
+<deck-stage width="1920" height="1080">
+<!-- ============================================================ -->
+<!-- ACT 1 — THE WORLD I CAME FROM                                -->
+<!-- ============================================================ -->
+
+<!-- ============================================================ -->
+<!-- SLIDE 01 · TITLE                                              -->
+<!-- ============================================================ -->
+<section data-label="01 Title">
+  <div class="frame" style="padding: 90px 110px;">
+    <!-- Top bar -->
+    <div style="display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); font-size: 24px; color: var(--muted); letter-spacing: 0.08em; white-space: nowrap;">
+      <span>SUPERBRAIN.TALK</span>
+      <span>2026 / TECH CONF</span>
+    </div>
+
+    <!-- Split visual area -->
+    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; margin: 80px 0 60px;">
+      <!-- LEFT: clean pipeline (the old world) -->
+      <div style="display: flex; flex-direction: column; gap: 22px; font-family: var(--font-mono); color: var(--text);">
+        <div style="font-size: 24px; letter-spacing: 0.22em; color: var(--muted); text-transform: uppercase; margin-bottom: 14px;">/* the world i came from */</div>
+        <div style="padding: 22px 28px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-size: 28px;">data ─┐</div>
+        <div style="padding: 22px 28px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-size: 28px;">features ─┤</div>
+        <div style="padding: 22px 28px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-size: 28px;">cnn / xgboost ─┤</div>
+        <div style="padding: 22px 28px; border: 1px solid var(--amber-dim); border-radius: 12px; background: rgba(232,177,76,0.10); color: var(--amber); font-size: 28px;">F1 = <span style="font-weight: 700;">0.87</span> ✓</div>
+      </div>
+
+      <!-- RIGHT: foggy LLM / markdown instructions (the new world) -->
+      <div style="position: relative; height: 540px; overflow: hidden;">
+        <div style="font-size: 24px; letter-spacing: 0.22em; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; font-family: var(--font-mono);">/* the world that arrived */</div>
+        <div style="position: absolute; inset: 50px 0 0 0; font-family: var(--font-mono); color: var(--muted); font-size: 24px; line-height: 1.55; opacity: 0.55; filter: blur(0.6px); white-space: pre-wrap;">## SYSTEM
+You are a careful assistant. Reason
+step by step. When uncertain, ask
+clarifying questions...
+
+## TOOLS
+- search(query)
+- read_file(path)
+- call_model(...)
+
+## STYLE
+Be concise. Avoid hallucinations.
+Cite your sources. Refuse politely
+when evidence is missing.
+
+## OUTPUT
+{ "answer": "...", "sources": [...] }
+        </div>
+        <!-- Big amber question mark, rotated -->
+        <div style="position: absolute; right: -30px; bottom: -60px; font-size: 420px; font-family: var(--font-sans); font-weight: 700; color: var(--amber); opacity: 0.18; line-height: 1;">?</div>
+      </div>
+    </div>
+
+    <!-- Title block -->
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 60px;">
+      <div style="flex: 1;">
+        <h1 style="font-size: 86px; font-weight: 700; line-height: 1.02; letter-spacing: -0.025em; margin: 0; color: var(--text); max-width: 1300px;">Things I learned building a <span class="amber">local-only agentic AI system</span>.</h1>
+        <div style="margin-top: 28px; font-size: 30px; color: var(--muted); font-weight: 400;">Superbrain — a practitioner's honest account.</div>
+      </div>
+      <div style="text-align: right; font-size: 24px; color: var(--text); font-family: var(--font-mono); line-height: 1.6;">
+        <div style="color: var(--amber); font-weight: 600;">Amar Chheda</div>
+        <div style="color: var(--muted);">Machine Learning Engineer</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 02 · The world I came from                              -->
+<!-- ============================================================ -->
+<section data-label="02 The world I came from">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 1 · The world I came from</span></div>
+      <h2 class="h-title">The world I came from.</h2>
+    </div>
+
+    <div class="body-grow" style="justify-content: center; gap: 60px;">
+      <!-- Four pillars laid out horizontally -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px;">
+        <div style="border-top: 2px solid var(--amber); padding-top: 28px;">
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em;">01 / LIFECYCLE</div>
+          <div class="h-sub" style="margin-top: 18px;">Train. Measure. Ship.</div>
+        </div>
+        <div style="border-top: 2px solid var(--amber); padding-top: 28px;">
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em;">02 / I/O</div>
+          <div class="h-sub" style="margin-top: 18px;">You control the inputs. You control the outputs.</div>
+        </div>
+        <div style="border-top: 2px solid var(--amber); padding-top: 28px;">
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em;">03 / PERFORMANCE</div>
+          <div class="h-sub" style="margin-top: 18px;">A number on a leaderboard.</div>
+        </div>
+        <div style="border-top: 2px solid var(--amber); padding-top: 28px;">
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em;">04 / BEHAVIOUR</div>
+          <div class="h-sub" style="margin-top: 18px;">Deterministic by design.</div>
+        </div>
+      </div>
+
+      <div class="callout" style="align-self: flex-start; max-width: 1400px;">
+        <span class="label">In traditional ML</span>
+        <span style="font-size: var(--type-body);"><span class="amber">You</span> own the accuracy. The system does what the math says.</span>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>01 / The old world</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 03 · Accuracy was my responsibility                     -->
+<!-- ============================================================ -->
+<section data-label="03 Accuracy was my responsibility">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 1 · The world I came from</span></div>
+      <h2 class="h-title">Accuracy was <span class="amber">my</span> responsibility.</h2>
+    </div>
+
+    <div class="body-grow" style="justify-content: center;">
+      <!-- A specialised model pipeline -->
+      <div style="display: flex; align-items: center; justify-content: center; gap: 26px; font-family: var(--font-mono); font-size: 28px; margin-bottom: 80px;">
+        <div style="padding: 28px 36px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); text-align: center; min-width: 200px;">
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em; margin-bottom: 8px;">INPUT</div>
+          <div>raw data</div>
+        </div>
+        <div style="color: var(--amber); font-size: 32px;">→</div>
+        <div style="padding: 28px 36px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); text-align: center; min-width: 200px;">
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em; margin-bottom: 8px;">CURATE</div>
+          <div>features</div>
+        </div>
+        <div style="color: var(--amber); font-size: 32px;">→</div>
+        <div style="padding: 28px 36px; border: 1px solid var(--amber-dim); border-radius: 14px; background: rgba(232,177,76,0.10); text-align: center; min-width: 240px;">
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.18em; margin-bottom: 8px;">SPECIALIST MODEL</div>
+          <div>narrow task</div>
+        </div>
+        <div style="color: var(--amber); font-size: 32px;">→</div>
+        <div style="padding: 28px 36px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); text-align: center; min-width: 220px;">
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em; margin-bottom: 8px;">OUTPUT</div>
+          <div>label / score</div>
+        </div>
+      </div>
+
+      <!-- Four short responsibilities -->
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 30px 80px; max-width: 1500px; margin: 0 auto;">
+        <div class="h-body"><span class="amber mono" style="font-size: 26px;">▸ </span>Fine-tuned the model for <em class="muted">my</em> specific task.</div>
+        <div class="h-body"><span class="amber mono" style="font-size: 26px;">▸ </span>Curated the data. Defined the metrics.</div>
+        <div class="h-body"><span class="amber mono" style="font-size: 26px;">▸ </span>Understood what it could and couldn't do.</div>
+        <div class="h-body"><span class="amber mono" style="font-size: 26px;">▸ </span>The cost of being wrong: a bad F1 score.</div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>02 / The old world</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 04 · Then foundation models arrived                     -->
+<!-- ============================================================ -->
+<section data-label="04 Then foundation models arrived">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 1 · The world I came from</span></div>
+      <h2 class="h-title">Then the world handed us <span class="amber">foundation models</span>.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.05fr 1fr; gap: 80px; align-items: center;">
+      <!-- LEFT: enumerated shifts -->
+      <div style="display: flex; flex-direction: column; gap: 36px;">
+        <div style="display: flex; gap: 28px; align-items: baseline;">
+          <span class="mono amber" style="font-size: 28px; font-weight: 600; min-width: 56px;">01</span>
+          <span class="h-body">One giant model. Billions of parameters. <span class="muted">"General"</span> intelligence.</span>
+        </div>
+        <div style="display: flex; gap: 28px; align-items: baseline;">
+          <span class="mono amber" style="font-size: 28px; font-weight: 600; min-width: 56px;">02</span>
+          <span class="h-body">The <em class="teal">model</em> decides what counts as a good answer.</span>
+        </div>
+        <div style="display: flex; gap: 28px; align-items: baseline;">
+          <span class="mono amber" style="font-size: 28px; font-weight: 600; min-width: 56px;">03</span>
+          <span class="h-body">My job changes: <span class="amber">write instructions, not code.</span></span>
+        </div>
+        <div style="display: flex; gap: 28px; align-items: baseline;">
+          <span class="mono amber" style="font-size: 28px; font-weight: 600; min-width: 56px;">04</span>
+          <span class="h-body">I prompt. I pray. I evaluate... <em class="muted">differently.</em></span>
+        </div>
+      </div>
+
+      <!-- RIGHT: big pull quote -->
+      <div style="display: flex; flex-direction: column; gap: 36px;">
+        <div style="border-left: 4px solid var(--amber); padding: 12px 0 12px 44px;">
+          <div style="font-size: 44px; line-height: 1.18; color: var(--text); font-weight: 500; letter-spacing: -0.01em; text-wrap: pretty;">
+            "The benchmarks say it's great — <span class="amber">but does it work for your task?"</span>
+          </div>
+          <div class="mono muted" style="margin-top: 32px; font-size: 24px; letter-spacing: 0.12em;">— THE QUESTION I COULDN'T ANSWER</div>
+        </div>
+        <div style="padding: 22px 28px; background: rgba(232,177,76,0.06); border: 1px solid var(--amber-dim); border-radius: 12px; font-size: 24px; color: var(--muted); line-height: 1.5; font-style: italic;">
+          "To my old-school ML brain, a markdown file full of instructions and a model expected to 'figure out the rest' was both fascinating and deeply uncomfortable. So I did what I know best: <span style="color: var(--text); font-style: normal;">I built a system to learn how it actually works.</span>"
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>03 / The shift</span></div>
+  </div>
+</section>
+<!-- ============================================================ -->
+<!-- ACT 2 — THE PARADIGM SHIFT                                    -->
+<!-- ============================================================ -->
+
+<!-- ============================================================ -->
+<!-- SLIDE 05 · Agentic AI is orchestrated decision-making         -->
+<!-- ============================================================ -->
+<section data-label="05 Agentic AI is orchestrated decision-making">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 2 · The paradigm shift</span></div>
+      <h2 class="h-title">Agentic AI isn't a chatbot. It's <span class="amber">orchestrated decision-making</span>.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.05fr 1fr; gap: 70px; align-items: center;">
+      <!-- LEFT: bounded flow diagram -->
+      <div style="font-family: var(--font-mono); font-size: 24px;">
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <!-- Input row -->
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="padding: 14px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); min-width: 180px;">input</div>
+            <span class="muted">→</span>
+            <div style="padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 10px; background: rgba(91,194,168,0.08); color: var(--teal); min-width: 180px;">retrieve</div>
+            <span class="muted">→</span>
+            <div style="padding: 14px 22px; border: 1px solid var(--amber-dim); border-radius: 10px; background: rgba(232,177,76,0.10); color: var(--amber); min-width: 200px;">llm decide</div>
+          </div>
+          <!-- Diamond decision row -->
+          <div style="display: flex; align-items: center; gap: 12px; padding-left: 458px;">
+            <span class="muted">→</span>
+            <div style="padding: 14px 22px; border: 1px dashed var(--muted); border-radius: 10px; background: transparent; min-width: 180px; text-align: center;">valid?</div>
+          </div>
+          <!-- Branches -->
+          <div style="display: flex; align-items: center; gap: 12px; padding-left: 658px;">
+            <span class="teal">✓ →</span>
+            <div style="padding: 14px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); min-width: 200px;">execute tool</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; padding-left: 658px;">
+            <span class="amber">✗ →</span>
+            <div style="padding: 14px 22px; border: 1px solid var(--amber-dim); border-radius: 10px; background: rgba(232,177,76,0.08); color: var(--amber); min-width: 200px;">fallback</div>
+          </div>
+          <!-- Final output -->
+          <div style="display: flex; align-items: center; gap: 12px; padding-left: 458px; margin-top: 8px;">
+            <span class="muted">→</span>
+            <div style="padding: 14px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); min-width: 180px;">observe</div>
+            <span class="muted">→</span>
+            <div style="padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 10px; background: rgba(91,194,168,0.08); color: var(--teal); min-width: 160px;">output</div>
+          </div>
+        </div>
+        <div class="mono muted" style="margin-top: 30px; font-size: 24px; letter-spacing: 0.16em;">/* not a node. a system. */</div>
+      </div>
+
+      <!-- RIGHT: list + callout -->
+      <div style="display: flex; flex-direction: column; gap: 30px;">
+        <div class="h-body" style="font-weight: 500;">An agent <span class="amber">perceives</span> inputs, <span class="amber">decides</span> on actions, <span class="amber">executes</span> them, <span class="amber">observes</span> results.</div>
+        <div class="h-body muted" style="font-size: 30px;">The model is not the product. The <span class="text">workflow</span> is the product.</div>
+        <div class="callout">
+          <span class="label">What surprised me most</span>
+          <span style="font-size: 32px;">Agentic AI is more like <span class="teal">distributed systems engineering</span> than data science.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>04 / The shift</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 06 · Responsibility moved, didn't disappear             -->
+<!-- ============================================================ -->
+<section data-label="06 Responsibility moved didn't disappear">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 2 · The paradigm shift</span></div>
+      <h2 class="h-title">Foundation models <span class="amber">shifted</span> the responsibility — they didn't eliminate it.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: stretch;">
+      <!-- OLD WORLD -->
+      <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 50px 50px; display: flex; flex-direction: column; gap: 26px;">
+        <div class="mono muted" style="font-size: 24px; letter-spacing: 0.2em;">OLD WORLD</div>
+        <div class="h-sub" style="font-size: 38px;">You own accuracy at the <span class="amber">model</span> level.</div>
+        <div style="height: 1px; background: var(--border);"></div>
+        <div class="h-body muted" style="font-size: 28px;">Training data. Loss curves. Hyperparameters. F1 on a holdout set.</div>
+      </div>
+      <!-- NEW WORLD -->
+      <div style="background: rgba(232,177,76,0.06); border: 1px solid var(--amber-dim); border-radius: 18px; padding: 50px 50px; display: flex; flex-direction: column; gap: 26px;">
+        <div class="mono amber" style="font-size: 24px; letter-spacing: 0.2em;">NEW WORLD</div>
+        <div class="h-sub" style="font-size: 38px;">You own accuracy at the <span class="amber">system</span> level.</div>
+        <div style="height: 1px; background: var(--amber-dim); opacity: 0.5;"></div>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="h-body" style="font-size: 28px;"><span class="amber mono">▸</span> Prompt design</div>
+          <div class="h-body" style="font-size: 28px;"><span class="amber mono">▸</span> Retrieval quality</div>
+          <div class="h-body" style="font-size: 28px;"><span class="amber mono">▸</span> Workflow boundaries</div>
+          <div class="h-body" style="font-size: 28px;"><span class="amber mono">▸</span> Output validation</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 40px; text-align: center; font-size: 32px; color: var(--muted);">The model is general. <span class="text">The system must be specific.</span></div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>05 / The shift</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 07 · How small language models get made                 -->
+<!-- ============================================================ -->
+<section data-label="07 How small language models get made">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 2 · The paradigm shift</span></div>
+      <h2 class="h-title">How small language models get made.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 60px; align-items: center;">
+      <!-- LEFT: funnel diagram -->
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; font-family: var(--font-mono);">
+        <div style="width: 720px; padding: 16px 26px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); text-align: center; font-size: 28px;">LLM <span class="muted" style="font-size: 24px;">· 70B+ parameters</span></div>
+        <div class="muted" style="font-size: 24px; line-height: 1;">↓</div>
+        <div style="width: 620px; padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 14px; background: rgba(91,194,168,0.06); text-align: center; font-size: 26px; color: var(--teal);">knowledge distillation</div>
+        <div class="muted" style="font-size: 24px; line-height: 1;">↓</div>
+        <div style="width: 540px; padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 14px; background: rgba(91,194,168,0.06); text-align: center; font-size: 26px; color: var(--teal);">pruning</div>
+        <div class="muted" style="font-size: 24px; line-height: 1;">↓</div>
+        <div style="width: 460px; padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 14px; background: rgba(91,194,168,0.06); text-align: center; font-size: 26px; color: var(--teal);">quantization</div>
+        <div class="muted" style="font-size: 24px; line-height: 1;">↓</div>
+        <div style="width: 380px; padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 14px; background: rgba(91,194,168,0.06); text-align: center; font-size: 26px; color: var(--teal);">LoRA adapters</div>
+        <div class="muted" style="font-size: 24px; line-height: 1;">↓</div>
+        <div style="width: 320px; padding: 16px 26px; border: 1px solid var(--amber-dim); border-radius: 14px; background: rgba(232,177,76,0.12); text-align: center; font-size: 28px; color: var(--amber);">SLM <span class="muted" style="font-size: 24px;">· 1–8B</span></div>
+      </div>
+
+      <!-- RIGHT: explanation -->
+      <div style="display: flex; flex-direction: column; gap: 32px;">
+        <div>
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 10px;">PRE-TRAINING</div>
+          <div class="h-body" style="font-size: 28px;">Same recipe as an LLM — just a smaller corpus, fewer parameters.</div>
+        </div>
+        <div>
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 10px;">DISTILLATION</div>
+          <div class="h-body" style="font-size: 28px;">A large teacher transfers <em>reasoning</em>, not just outputs, to a small student.</div>
+        </div>
+        <div>
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 10px;">PRUNING + QUANTIZATION</div>
+          <div class="h-body" style="font-size: 28px;">Strip weights. Lower precision. Same task, less silicon.</div>
+        </div>
+        <div>
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 10px;">LoRA</div>
+          <div class="h-body" style="font-size: 28px;">Inject task-specific adapters without retraining from scratch.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>06 / The shift</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 08 · Generalist or specialist                           -->
+<!-- ============================================================ -->
+<section data-label="08 Generalist or specialist">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 2 · The paradigm shift</span></div>
+      <h2 class="h-title">Generalist or specialist? <span class="muted">It depends on your pipeline.</span></h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 50px;">
+      <!-- LLM column -->
+      <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 44px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px;">
+          <div class="h-sub" style="font-size: 40px;">Generalist <span class="muted">LLM</span></div>
+          <span class="tag amber">~70B+</span>
+        </div>
+        <div style="height: 1px; background: var(--border); margin-bottom: 28px;"></div>
+        <div style="display: flex; flex-direction: column; gap: 18px; font-size: 27px; line-height: 1.4;">
+          <div><span class="amber mono">+</span> Broad capability across domains</div>
+          <div><span class="amber mono">+</span> Complex reasoning, open-ended synthesis</div>
+          <div><span class="bad mono">−</span> Expensive per call</div>
+          <div><span class="bad mono">−</span> Non-deterministic on narrow tasks</div>
+        </div>
+      </div>
+
+      <!-- SLM column -->
+      <div style="background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 18px; padding: 44px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px;">
+          <div class="h-sub" style="font-size: 40px;">Specialist <span class="muted">SLM</span></div>
+          <span class="tag teal">~1–8B</span>
+        </div>
+        <div style="height: 1px; background: var(--teal-dim); opacity: 0.5; margin-bottom: 28px;"></div>
+        <div style="display: flex; flex-direction: column; gap: 18px; font-size: 27px; line-height: 1.4;">
+          <div><span class="teal mono">+</span> Fast, cheap, predictable</div>
+          <div><span class="teal mono">+</span> Better F1 on your specific domain</div>
+          <div><span class="teal mono">+</span> Classification, extraction, routing</div>
+          <div><span class="muted mono">·</span> Trained / fine-tuned for one task</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 44px; text-align: center; font-size: 32px;">Use <span class="amber" style="font-weight: 600;">both</span>. Route tasks to the right model.</div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>07 / The shift</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 09 · Latency is a system constraint                     -->
+<!-- ============================================================ -->
+<section data-label="09 Latency is a system constraint">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 2 · The paradigm shift</span></div>
+      <h2 class="h-title">Latency is a <span class="amber">system design constraint</span> — not a UX afterthought.</h2>
+    </div>
+
+    <div class="body-grow" style="justify-content: center;">
+      <!-- Latency table -->
+      <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; max-width: 1500px; margin: 0 auto; width: 100%;">
+        <!-- Header -->
+        <div style="display: grid; grid-template-columns: 1.6fr 1.2fr 1fr; padding: 26px 44px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 24px; letter-spacing: 0.14em; color: var(--muted); text-transform: uppercase;">
+          <div>Step</div>
+          <div>Model</div>
+          <div style="text-align: right;">Typical latency</div>
+        </div>
+        <!-- Rows -->
+        <div style="display: grid; grid-template-columns: 1.6fr 1.2fr 1fr; padding: 28px 44px; border-bottom: 1px solid var(--border); align-items: baseline;">
+          <div style="font-size: 32px;">Chunking strategy decision</div>
+          <div class="mono" style="font-size: 26px; color: var(--text);">llama3.1:8b <span class="muted" style="font-size: 24px;">· local</span></div>
+          <div class="mono tabular amber" style="font-size: 32px; text-align: right; font-weight: 500;">2–4 s</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.6fr 1.2fr 1fr; padding: 28px 44px; border-bottom: 1px solid var(--border); align-items: baseline;">
+          <div style="font-size: 32px;">Topic classification</div>
+          <div class="mono" style="font-size: 26px; color: var(--text);">phi3:mini <span class="muted" style="font-size: 24px;">· local</span></div>
+          <div class="mono tabular teal" style="font-size: 32px; text-align: right; font-weight: 500;">0.5–1.5 s</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.6fr 1.2fr 1fr; padding: 28px 44px; border-bottom: 1px solid var(--border); align-items: baseline;">
+          <div style="font-size: 32px;">Embedding generation</div>
+          <div class="mono" style="font-size: 26px; color: var(--text);">nomic-embed-text</div>
+          <div class="mono tabular teal" style="font-size: 32px; text-align: right; font-weight: 500;">50–200 ms</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.6fr 1.2fr 1fr; padding: 28px 44px; align-items: baseline;">
+          <div style="font-size: 32px;">Grounded answer generation</div>
+          <div class="mono" style="font-size: 26px; color: var(--text);">llama3.1:8b <span class="muted" style="font-size: 24px;">· local</span></div>
+          <div class="mono tabular amber" style="font-size: 32px; text-align: right; font-weight: 500;">4–12 s</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 50px; max-width: 1500px; margin-left: auto; margin-right: auto;">
+        <div class="callout">
+          <span class="label">Design principle</span>
+          <span style="font-size: 30px;">Put latency-sensitive steps on <span class="teal">smaller</span> models. Save the 8B for what only an 8B can do.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>08 / The shift</span></div>
+  </div>
+</section>
+<!-- ACT 3 — WHY SMALL LANGUAGE MODELS -->
+
+<section data-label="10 Why I chose small local models">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 3 · Why small language models?</span></div>
+      <h2 class="h-title">Why I chose small, local models.</h2>
+    </div>
+    <div class="body-grow" style="justify-content: center;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 32px; max-width: 1600px; margin: 0 auto; width: 100%;">
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 44px 48px; display: flex; flex-direction: column; gap: 18px;">
+          <div style="display: flex; align-items: baseline; gap: 22px;"><span class="mono amber" style="font-size: 28px; font-weight: 600;">01</span><div class="h-sub" style="font-size: 40px;">Privacy</div></div>
+          <div class="h-body" style="font-size: 30px; color: var(--text);">Data never leaves your hardware.</div>
+          <div class="h-small">No vendor, no logs, no compliance footnote.</div>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 44px 48px; display: flex; flex-direction: column; gap: 18px;">
+          <div style="display: flex; align-items: baseline; gap: 22px;"><span class="mono amber" style="font-size: 28px; font-weight: 600;">02</span><div class="h-sub" style="font-size: 40px;">Cost</div></div>
+          <div class="h-body" style="font-size: 30px; color: var(--text);">No per-token API bill at scale.</div>
+          <div class="h-small">Electricity is the only variable cost.</div>
+        </div>
+        <div style="background: rgba(232,177,76,0.08); border: 1px solid var(--amber-dim); border-radius: 18px; padding: 44px 48px; display: flex; flex-direction: column; gap: 18px;">
+          <div style="display: flex; align-items: baseline; gap: 22px;"><span class="mono amber" style="font-size: 28px; font-weight: 600;">03</span><div class="h-sub amber" style="font-size: 40px;">Forcing function</div></div>
+          <div class="h-body" style="font-size: 30px; color: var(--text);">Small models force better system design.</div>
+          <div class="h-small" style="color: var(--amber); opacity: 0.85;">The whole reason this talk exists.</div>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 44px 48px; display: flex; flex-direction: column; gap: 18px;">
+          <div style="display: flex; align-items: baseline; gap: 22px;"><span class="mono amber" style="font-size: 28px; font-weight: 600;">04</span><div class="h-sub" style="font-size: 40px;">Observability</div></div>
+          <div class="h-body" style="font-size: 30px; color: var(--text);">You control every call, every log, every retry.</div>
+          <div class="h-small">No black box. Full trace.</div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>09 / Why SLMs</span></div>
+  </div>
+</section>
+
+<section data-label="11 What running LLMs actually costs">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 3 · Why small language models?</span></div>
+      <h2 class="h-title">What running LLMs <em class="amber">actually</em> costs.</h2>
+    </div>
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 70px; align-items: center;">
+      <div>
+        <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 28px;">Monthly cost · 1,000 articles/day ingestion</div>
+        <div style="display: flex; flex-direction: column; gap: 30px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
+              <span class="mono" style="font-size: 26px;">GPT-4o · cloud</span>
+              <span class="mono amber tabular" style="font-size: 36px; font-weight: 600;">$7,500+</span>
+            </div>
+            <div style="height: 28px; background: var(--surface); border-radius: 6px; overflow: hidden;"><div style="height: 100%; width: 100%; background: var(--amber);"></div></div>
+          </div>
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
+              <span class="mono" style="font-size: 26px;">llama3.1:8b · local</span>
+              <span class="mono teal tabular" style="font-size: 36px; font-weight: 600;">~$12</span>
+            </div>
+            <div style="height: 28px; background: var(--surface); border-radius: 6px; overflow: hidden;"><div style="height: 100%; width: 1.5%; background: var(--teal);"></div></div>
+            <div class="muted mono" style="font-size: 24px; margin-top: 8px;">electricity only · amortise the hardware</div>
+          </div>
+        </div>
+        <div class="mono muted" style="font-size: 24px; margin-top: 28px;">assumes 1,500 input tokens × 1,000 articles/day = 1.5B tokens/month</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 32px;">
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 14px;">At enterprise scale</div>
+          <div class="h-sub" style="font-size: 38px; line-height: 1.2;"><span class="amber tabular">$500K–$2M/yr</span> for serious cloud LLM workloads.</div>
+          <div class="h-small" style="margin-top: 14px;">Plus rate limits, plus residency, plus compliance.</div>
+          <div class="mono muted" style="font-size: 24px; margin-top: 6px;">Gartner, 2024</div>
+        </div>
+        <div class="callout">
+          <span class="label">Punchline</span>
+          <span style="font-size: 32px;">Running llama3.1:8b locally costs me <span class="teal">electricity</span>. That's it.</span>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>10 / Why SLMs</span></div>
+  </div>
+</section>
+<section data-label="12 NVIDIA case for small agentic models">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 3 · Why small language models?</span></div>
+      <h2 class="h-title">NVIDIA's case: <span class="amber">small models are the future of agentic AI</span>.</h2>
+    </div>
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;">
+      <div style="display: flex; flex-direction: column; gap: 50px;">
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 18px;">General NLP benchmark</div>
+          <div style="display: flex; flex-direction: column; gap: 12px; font-size: 24px;">
+            <div style="display: grid; grid-template-columns: 180px 1fr 70px; align-items: center; gap: 14px;">
+              <span class="mono">Llama-3 70B</span>
+              <div style="height: 22px; background: var(--surface); border-radius: 4px; overflow: hidden;"><div style="height:100%; width: 95%; background: var(--amber);"></div></div>
+              <span class="mono tabular amber">82</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 180px 1fr 70px; align-items: center; gap: 14px;">
+              <span class="mono">Phi-3 mini</span>
+              <div style="height: 22px; background: var(--surface); border-radius: 4px; overflow: hidden;"><div style="height:100%; width: 62%; background: var(--teal);"></div></div>
+              <span class="mono tabular teal">53</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 180px 1fr 70px; align-items: center; gap: 14px;">
+              <span class="mono">SmolLM2</span>
+              <div style="height: 22px; background: var(--surface); border-radius: 4px; overflow: hidden;"><div style="height:100%; width: 56%; background: var(--teal);"></div></div>
+              <span class="mono tabular teal">48</span>
+            </div>
+          </div>
+          <div class="muted" style="font-size: 24px; margin-top: 14px;">LLMs win by a wide margin.</div>
+        </div>
+        <div>
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 18px;">Berkeley function-calling leaderboard</div>
+          <div style="display: flex; flex-direction: column; gap: 12px; font-size: 24px;">
+            <div style="display: grid; grid-template-columns: 180px 1fr 70px; align-items: center; gap: 14px;">
+              <span class="mono">Llama-3 70B</span>
+              <div style="height: 22px; background: var(--surface); border-radius: 4px; overflow: hidden;"><div style="height:100%; width: 86%; background: var(--amber);"></div></div>
+              <span class="mono tabular amber">79</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 180px 1fr 70px; align-items: center; gap: 14px;">
+              <span class="mono">Phi-3 mini</span>
+              <div style="height: 22px; background: var(--surface); border-radius: 4px; overflow: hidden;"><div style="height:100%; width: 84%; background: var(--teal);"></div></div>
+              <span class="mono tabular teal">77</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 180px 1fr 70px; align-items: center; gap: 14px;">
+              <span class="mono">SmolLM2</span>
+              <div style="height: 22px; background: var(--surface); border-radius: 4px; overflow: hidden;"><div style="height:100%; width: 82%; background: var(--teal);"></div></div>
+              <span class="mono tabular teal">75</span>
+            </div>
+          </div>
+          <div class="teal" style="font-size: 24px; margin-top: 14px;">SLMs go toe-to-toe.</div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 26px;">
+        <div class="h-body" style="font-size: 30px;">Agents make <span class="amber">many sequential calls</span>. Cost and latency compound at every step.</div>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; gap: 18px;"><span class="amber mono" style="font-size: 26px;">▸</span><span class="h-body" style="font-size: 28px;">SLMs match or beat LLMs on tool-use and structured output.</span></div>
+          <div style="display: flex; gap: 18px;"><span class="amber mono" style="font-size: 26px;">▸</span><span class="h-body" style="font-size: 28px;">Models cited: Phi-3, Nemotron, SmolLM2, DeepSeek, Llama 3.3.</span></div>
+          <div style="display: flex; gap: 18px;"><span class="amber mono" style="font-size: 26px;">▸</span><span class="h-body" style="font-size: 28px;">Evaluate on <em>agentic</em> benchmarks — not general NLP.</span></div>
+        </div>
+        <div class="callout" style="background: rgba(91,194,168,0.08); border-left: 4px solid var(--teal);">
+          <span class="label" style="color: var(--teal);">Citation</span>
+          <span class="mono" style="font-size: 26px;">arXiv:2506.02153 · NVIDIA, 2025</span>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>11 / Why SLMs</span></div>
+  </div>
+</section>
+
+<section data-label="13 The open-weights moment">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 3 · Why small language models?</span></div>
+      <h2 class="h-title">The open-weights moment.</h2>
+    </div>
+    <div class="body-grow" style="justify-content: center; gap: 60px;">
+      <div style="position: relative; padding: 60px 0;">
+        <div style="position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: var(--border); transform: translateY(-1px);"></div>
+        <div style="position: relative; display: grid; grid-template-columns: repeat(6, 1fr); gap: 24px;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 18px;">
+            <div style="text-align: center; min-height: 80px;"><div class="mono" style="font-size: 24px; color: var(--text);">Llama 2</div><div class="muted" style="font-size: 24px;">7B / 13B</div></div>
+            <div style="width: 14px; height: 14px; border-radius: 50%; background: var(--muted);"></div>
+            <div class="mono muted" style="font-size: 24px;">2023 H1</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 18px;">
+            <div style="text-align: center; min-height: 80px;"><div class="mono" style="font-size: 24px; color: var(--text);">Mistral 7B</div><div class="muted" style="font-size: 24px;">grouped-query</div></div>
+            <div style="width: 14px; height: 14px; border-radius: 50%; background: var(--muted);"></div>
+            <div class="mono muted" style="font-size: 24px;">2023 H2</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 18px;">
+            <div style="text-align: center; min-height: 80px;"><div class="mono" style="font-size: 24px; color: var(--amber);">Phi-3 mini</div><div class="muted" style="font-size: 24px;">3.8B · runs on a laptop</div></div>
+            <div style="width: 16px; height: 16px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 4px rgba(232,177,76,0.18);"></div>
+            <div class="mono muted" style="font-size: 24px;">2024 Q1</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 18px;">
+            <div style="text-align: center; min-height: 80px;"><div class="mono" style="font-size: 24px; color: var(--text);">Llama 3.1 8B</div><div class="muted" style="font-size: 24px;">128k context</div></div>
+            <div style="width: 14px; height: 14px; border-radius: 50%; background: var(--muted);"></div>
+            <div class="mono muted" style="font-size: 24px;">2024 Q3</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 18px;">
+            <div style="text-align: center; min-height: 80px;"><div class="mono" style="font-size: 24px; color: var(--amber);">Qwen2.5 / Gemma 2</div><div class="muted" style="font-size: 24px;">strong tool use</div></div>
+            <div style="width: 16px; height: 16px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 4px rgba(232,177,76,0.18);"></div>
+            <div class="mono muted" style="font-size: 24px;">2025 Q1</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 18px;">
+            <div style="text-align: center; min-height: 80px;"><div class="mono" style="font-size: 24px; color: var(--teal);">Llama 3.3 / Phi-4</div><div class="muted" style="font-size: 24px;">competitive at 7B</div></div>
+            <div style="width: 16px; height: 16px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 4px rgba(91,194,168,0.18);"></div>
+            <div class="mono muted" style="font-size: 24px;">2025 Q4</div>
+          </div>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; max-width: 1500px; margin: 0 auto;">
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 12px;">Before</div>
+          <div class="h-body" style="font-size: 28px;">You needed cloud APIs for anything useful.</div>
+        </div>
+        <div>
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 12px;">After</div>
+          <div class="h-body" style="font-size: 28px;">An instruction-following model runs on my laptop. <span class="amber">This is what made Superbrain possible.</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>12 / Why SLMs</span></div>
+  </div>
+</section>
+<section data-label="14 SLMs and LLMs orchestrated">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 3 · Why small language models?</span></div>
+      <h2 class="h-title">It's not SLMs versus LLMs. It's <span class="amber">SLMs and LLMs</span> — orchestrated.</h2>
+    </div>
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.05fr 1fr; gap: 70px; align-items: center;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 30px;">
+        <div style="padding: 30px 50px; border: 2px solid var(--amber); border-radius: 16px; background: rgba(232,177,76,0.10); text-align: center;">
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.18em; margin-bottom: 6px;">CONDUCTOR</div>
+          <div style="font-size: 34px; font-weight: 600;">LLM</div>
+          <div class="muted mono" style="font-size: 24px; margin-top: 4px;">rare · high-level</div>
+        </div>
+        <div style="display: flex; gap: 80px; align-items: flex-start;">
+          <div style="width: 2px; height: 50px; background: var(--border);"></div>
+          <div style="width: 2px; height: 50px; background: var(--border);"></div>
+          <div style="width: 2px; height: 50px; background: var(--border);"></div>
+          <div style="width: 2px; height: 50px; background: var(--border);"></div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;">
+          <div style="padding: 20px 22px; border: 1px solid var(--teal-dim); border-radius: 12px; background: rgba(91,194,168,0.08); text-align: center;"><div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em;">SLM</div><div style="font-size: 24px; margin-top: 6px;">classify</div></div>
+          <div style="padding: 20px 22px; border: 1px solid var(--teal-dim); border-radius: 12px; background: rgba(91,194,168,0.08); text-align: center;"><div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em;">SLM</div><div style="font-size: 24px; margin-top: 6px;">extract</div></div>
+          <div style="padding: 20px 22px; border: 1px solid var(--teal-dim); border-radius: 12px; background: rgba(91,194,168,0.08); text-align: center;"><div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em;">SLM</div><div style="font-size: 24px; margin-top: 6px;">route</div></div>
+          <div style="padding: 20px 22px; border: 1px solid var(--teal-dim); border-radius: 12px; background: rgba(91,194,168,0.08); text-align: center;"><div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em;">SLM</div><div style="font-size: 24px; margin-top: 6px;">embed</div></div>
+        </div>
+        <div class="mono muted" style="font-size: 24px; margin-top: 8px; letter-spacing: 0.16em;">/ frequent · precise /</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 32px;">
+        <div class="h-body" style="font-size: 30px;"><span class="amber">LLMs</span>: complex synthesis, nuanced reasoning, one-shot creative work.</div>
+        <div class="h-body" style="font-size: 30px;"><span class="teal">SLMs</span>: classification, routing, structured extraction, high-volume repetition.</div>
+        <div style="height: 1px; background: var(--border); margin: 4px 0;"></div>
+        <div style="display: flex; align-items: baseline; gap: 28px;">
+          <span class="mono amber" style="font-size: 78px; font-weight: 700; line-height: 0.9;">3×</span>
+          <div><div class="h-body" style="font-size: 28px;">projected adoption of <span class="text">task-specific</span> models vs LLMs.</div><div class="mono muted" style="font-size: 24px; margin-top: 6px;">Gartner via InfoWorld, by 2027</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>13 / Why SLMs</span></div>
+  </div>
+</section>
+
+<section data-label="15 Small models force better design">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 3 · Why small language models?</span></div>
+      <h2 class="h-title">Small models are a <span class="amber">forcing function</span> for better system design.</h2>
+    </div>
+    <div class="body-grow" style="justify-content: center;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 28px; max-width: 1700px; margin: 0 auto; width: 100%;">
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px 40px;">
+          <div style="display: flex; align-items: baseline; gap: 22px; margin-bottom: 24px;"><span class="mono amber" style="font-size: 24px; font-weight: 600;">01</span><div class="h-sub" style="font-size: 32px;">Prompts must be precise.</div></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-size: 24px;">
+            <div><div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 8px;">BEFORE</div><div class="mono" style="color: var(--bad);">"classify this article"</div></div>
+            <div><div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 8px;">AFTER</div><div class="mono">role + task + schema + fallback</div></div>
+          </div>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px 40px;">
+          <div style="display: flex; align-items: baseline; gap: 22px; margin-bottom: 24px;"><span class="mono amber" style="font-size: 24px; font-weight: 600;">02</span><div class="h-sub" style="font-size: 32px;">Boundaries must be explicit.</div></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-size: 24px;">
+            <div><div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 8px;">BEFORE</div><div class="mono" style="color: var(--bad);">"figure it out"</div></div>
+            <div><div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 8px;">AFTER</div><div class="mono">one decision, one schema, per step</div></div>
+          </div>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px 40px;">
+          <div style="display: flex; align-items: baseline; gap: 22px; margin-bottom: 24px;"><span class="mono amber" style="font-size: 24px; font-weight: 600;">03</span><div class="h-sub" style="font-size: 32px;">Outputs must be validated.</div></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-size: 24px;">
+            <div><div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 8px;">BEFORE</div><div class="mono" style="color: var(--bad);">parse free text. hope.</div></div>
+            <div><div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 8px;">AFTER</div><div class="mono">structured JSON or fail loudly</div></div>
+          </div>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px 40px;">
+          <div style="display: flex; align-items: baseline; gap: 22px; margin-bottom: 24px;"><span class="mono amber" style="font-size: 24px; font-weight: 600;">04</span><div class="h-sub" style="font-size: 32px;">Fallbacks must be engineered.</div></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-size: 24px;">
+            <div><div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 8px;">BEFORE</div><div class="mono" style="color: var(--bad);">rely on model cleverness</div></div>
+            <div><div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 8px;">AFTER</div><div class="mono">deterministic default path</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>14 / Why SLMs</span></div>
+  </div>
+</section>
+
+<section data-label="16 Division of labour">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 3 · Why small language models?</span></div>
+      <h2 class="h-title">Division of labour.</h2>
+    </div>
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 70px; align-items: center;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
+        <div style="padding: 26px 50px; border: 2px solid var(--amber); border-radius: 14px; background: rgba(232,177,76,0.10); text-align: center;">
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.18em;">SENIOR ADVISOR</div>
+          <div style="font-size: 30px; font-weight: 600; margin-top: 4px;">LLM</div>
+        </div>
+        <div style="width: 2px; height: 30px; background: var(--border);"></div>
+        <div style="position: relative; width: 100%;"><div style="position: absolute; left: 12.5%; right: 12.5%; top: 0; height: 2px; background: var(--border);"></div></div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; width: 100%;">
+          <div style="text-align: center;">
+            <div style="width: 2px; height: 28px; background: var(--border); margin: 0 auto;"></div>
+            <div style="padding: 20px 24px; border: 1px solid var(--teal-dim); border-radius: 12px; background: rgba(91,194,168,0.08); margin-top: 4px;">
+              <div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em;">TEAM</div>
+              <div style="font-size: 24px; margin-top: 4px;">routine classify</div>
+              <div class="muted mono" style="font-size: 24px; margin-top: 4px;">phi3:mini</div>
+            </div>
+          </div>
+          <div style="text-align: center;">
+            <div style="width: 2px; height: 28px; background: var(--border); margin: 0 auto;"></div>
+            <div style="padding: 20px 24px; border: 1px solid var(--teal-dim); border-radius: 12px; background: rgba(91,194,168,0.08); margin-top: 4px;">
+              <div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em;">TEAM</div>
+              <div style="font-size: 24px; margin-top: 4px;">structured extract</div>
+              <div class="muted mono" style="font-size: 24px; margin-top: 4px;">phi3:mini</div>
+            </div>
+          </div>
+          <div style="text-align: center;">
+            <div style="width: 2px; height: 28px; background: var(--border); margin: 0 auto;"></div>
+            <div style="padding: 20px 24px; border: 1px solid var(--teal-dim); border-radius: 12px; background: rgba(91,194,168,0.08); margin-top: 4px;">
+              <div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em;">TEAM</div>
+              <div style="font-size: 24px; margin-top: 4px;">high-volume route</div>
+              <div class="muted mono" style="font-size: 24px; margin-top: 4px;">nomic-embed</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 30px;">
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 12px;">The key design question</div>
+          <div class="h-sub" style="font-size: 36px; line-height: 1.2;">"How do I <span class="amber">route and compose</span> multiple model sizes?"</div>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 26px;">
+          <span class="mono teal" style="font-size: 90px; font-weight: 700; line-height: 0.9;">90%</span>
+          <div class="h-body" style="font-size: 26px; line-height: 1.3;">cost reduction on high-volume repetitive tasks by switching routine work to SLMs.</div>
+        </div>
+        <div class="mono muted" style="font-size: 24px;">InfoWorld, 2024 — "Rethinking enterprise AI architecture"</div>
+      </div>
+    </div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>15 / Why SLMs</span></div>
+  </div>
+</section>
+<!-- ACT 4 — WHAT I BUILT: SUPERBRAIN -->
+
+<section data-label="17 Superbrain at a glance">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 4 · What I built — Superbrain</span></div>
+      <h2 class="h-title">Superbrain at a glance.</h2>
+      <div class="h-small" style="font-size: 26px;">Ingest anything. Classify it. Answer questions. Generate digests. <span class="amber">All on your hardware.</span></div>
+    </div>
+
+    <div class="body-grow" style="justify-content: center;">
+      <!-- Architecture diagram -->
+      <div style="display: flex; flex-direction: column; gap: 22px; font-family: var(--font-mono); font-size: 24px; max-width: 1700px; margin: 0 auto; width: 100%;">
+
+        <!-- Inputs -->
+        <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em;">ENTRY</div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+            <div style="padding: 18px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); text-align: center;">REST API <span class="muted">/ingestion/jobs</span></div>
+            <div style="padding: 18px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); text-align: center;">Telegram bot <span class="muted">webhook</span></div>
+            <div style="padding: 18px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); text-align: center;">CLI <span class="muted">superbrain ingest</span></div>
+          </div>
+        </div>
+
+        <div style="text-align: center; color: var(--muted); font-size: 24px;">↓</div>
+
+        <!-- Core -->
+        <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.18em;">CORE · FASTAPI · ASYNC</div>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;">
+            <div style="padding: 18px 22px; border: 1px solid var(--amber-dim); border-radius: 10px; background: rgba(232,177,76,0.08); text-align: center; color: var(--amber);">ingestion</div>
+            <div style="padding: 18px 22px; border: 1px solid var(--amber-dim); border-radius: 10px; background: rgba(232,177,76,0.08); text-align: center; color: var(--amber);">classifier</div>
+            <div style="padding: 18px 22px; border: 1px solid var(--amber-dim); border-radius: 10px; background: rgba(232,177,76,0.08); text-align: center; color: var(--amber);">QA pipeline</div>
+            <div style="padding: 18px 22px; border: 1px solid var(--amber-dim); border-radius: 10px; background: rgba(232,177,76,0.08); text-align: center; color: var(--amber);">digest scheduler</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: stretch;">
+          <!-- LEFT: storage -->
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="mono teal" style="font-size: 24px; letter-spacing: 0.18em;">STORAGE</div>
+            <div style="padding: 24px 28px; border: 1px solid var(--teal-dim); border-radius: 12px; background: rgba(91,194,168,0.06); text-align: center;">
+              <div style="color: var(--teal); font-size: 28px;">PostgreSQL 16</div>
+              <div class="muted" style="font-size: 24px; margin-top: 6px;">pgvector · tsvector · jsonb</div>
+              <div class="muted" style="font-size: 24px; margin-top: 4px;">vector + FTS + relational, one store</div>
+            </div>
+          </div>
+          <!-- RIGHT: models -->
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="mono teal" style="font-size: 24px; letter-spacing: 0.18em;">OLLAMA · LOCAL ONLY</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+              <div style="padding: 14px 18px; border: 1px solid var(--teal-dim); border-radius: 10px; background: rgba(91,194,168,0.06); text-align: center; font-size: 24px;">llama3.1:8b</div>
+              <div style="padding: 14px 18px; border: 1px solid var(--teal-dim); border-radius: 10px; background: rgba(91,194,168,0.06); text-align: center; font-size: 24px;">phi3:mini</div>
+              <div style="padding: 14px 18px; border: 1px solid var(--teal-dim); border-radius: 10px; background: rgba(91,194,168,0.06); text-align: center; font-size: 24px;">nomic-embed</div>
+            </div>
+            <div class="muted" style="font-size: 24px; text-align: center;">zero cloud AI dependency</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: 50px; text-align: center; font-size: 26px; color: var(--muted);">
+        crawler: <span class="text mono">httpx</span> (static) · <span class="text mono">Spider.cloud</span> (JS) · scheduler: <span class="text mono">APScheduler</span> · obs: <span class="text mono">model_call_logs</span> + eval harness
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>16 / Superbrain</span></div>
+  </div>
+</section>
+
+<section data-label="18 Three models four roles">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 4 · What I built — Superbrain</span></div>
+      <h2 class="h-title">Three local models. Four agentic roles.</h2>
+    </div>
+
+    <div class="body-grow" style="justify-content: center;">
+      <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; max-width: 1700px; margin: 0 auto; width: 100%;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1.4fr; padding: 26px 44px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 24px; letter-spacing: 0.16em; color: var(--muted); text-transform: uppercase;">
+          <div>Model</div>
+          <div>Role(s)</div>
+          <div>Why this model</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1.4fr; padding: 30px 44px; border-bottom: 1px solid var(--border); align-items: center;">
+          <div class="mono amber" style="font-size: 30px; font-weight: 500;">llama3.1:8b</div>
+          <div style="font-size: 26px;">chunking decisions<br/>grounded QA<br/>digest summaries</div>
+          <div style="font-size: 26px; color: var(--text);">Strong instruction-following at 8B. Reliable JSON when prompted well.</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1.4fr; padding: 30px 44px; border-bottom: 1px solid var(--border); align-items: center;">
+          <div class="mono teal" style="font-size: 30px; font-weight: 500;">phi3:mini</div>
+          <div style="font-size: 26px;">topic classification</div>
+          <div style="font-size: 26px; color: var(--text);">3.8B. Fast. Cheap. <span class="amber">4× faster</span> than llama on classification.</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1.4fr; padding: 30px 44px; align-items: center;">
+          <div class="mono teal" style="font-size: 30px; font-weight: 500;">nomic-embed-text</div>
+          <div style="font-size: 26px;">semantic embeddings</div>
+          <div style="font-size: 26px; color: var(--text);">Purpose-built, 768-dim. Excellent retrieval quality at the price.</div>
+        </div>
+      </div>
+
+      <div style="max-width: 1700px; margin: 36px auto 0;">
+        <div class="callout">
+          <span class="label">The lesson, in one line</span>
+          <span style="font-size: 30px;">phi3:mini for classification saved us <span class="teal">~4× latency</span> vs running llama3.1:8b on the same task. <span class="muted">Right model. Right job.</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>17 / Superbrain</span></div>
+  </div>
+</section>
+
+<section data-label="19 The chunking strategy agent">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 4 · What I built — Superbrain</span></div>
+      <h2 class="h-title">The chunking strategy agent — <span class="muted">LLM-as-decision-maker.</span></h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.05fr 1fr; gap: 60px; align-items: center;">
+      <!-- LEFT: code -->
+      <div>
+        <div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 14px;">app/application/ingestion/chunking_agent.py</div>
+<pre class="code"><span class="c"># 1. Ask the model. Give it a closed action space.</span>
+<span class="k">prompt</span> = <span class="s">"""
+Decide the chunking strategy. Output JSON only:
+{"strategy": "semantic"|"recursive"|"fixed"}
+Article (first 2000 chars): ..."""</span>
+
+<span class="c"># 2. Trust the response — only after parsing.</span>
+<span class="k">try</span>:
+    strategy = json.loads(response)[<span class="s">"strategy"</span>]
+    <span class="k">assert</span> strategy <span class="k">in</span> {<span class="s">"semantic"</span>, <span class="s">"recursive"</span>, <span class="s">"fixed"</span>}
+<span class="k">except</span> (JSONDecodeError, KeyError, AssertionError):
+    strategy = <span class="s">"fixed"</span>  <span class="c"># ← deterministic fallback</span></pre>
+      </div>
+
+      <!-- RIGHT: flow + lesson -->
+      <div style="display: flex; flex-direction: column; gap: 32px;">
+        <div style="display: flex; flex-direction: column; gap: 12px; font-family: var(--font-mono); font-size: 24px;">
+          <div style="padding: 14px 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);">raw text → llama3.1:8b</div>
+          <div style="text-align: center; color: var(--muted);">↓</div>
+          <div style="padding: 14px 20px; border: 1px dashed var(--muted); border-radius: 10px; text-align: center;">valid JSON?</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div style="padding: 14px 20px; border: 1px solid var(--teal-dim); border-radius: 10px; background: rgba(91,194,168,0.06); text-align: center; color: var(--teal);">✓ chosen strategy</div>
+            <div style="padding: 14px 20px; border: 1px solid var(--amber-dim); border-radius: 10px; background: rgba(232,177,76,0.08); text-align: center; color: var(--amber);">✗ "fixed"</div>
+          </div>
+          <div style="text-align: center; color: var(--muted);">↓</div>
+          <div style="padding: 14px 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); text-align: center;">chunker · 512 tok budget</div>
+        </div>
+        <div class="callout">
+          <span class="label">Lesson</span>
+          <span style="font-size: 30px;">Design for failure. <span class="amber">Every LLM call needs a fallback.</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>18 / Superbrain</span></div>
+  </div>
+</section>
+<section data-label="20 Classification by integer index">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 4 · What I built — Superbrain</span></div>
+      <h2 class="h-title">Classification by <span class="amber">integer index</span> — hallucination prevention by design.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 70px; align-items: center;">
+      <!-- LEFT: the mapping diagram -->
+      <div style="font-family: var(--font-mono); font-size: 24px; display: flex; flex-direction: column; gap: 16px;">
+        <!-- Topics shown to LLM -->
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 10px;">In the prompt</div>
+          <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 26px; line-height: 1.7;">
+            <div><span class="amber">[1]</span> Machine Learning</div>
+            <div><span class="amber">[2]</span> Security</div>
+            <div><span class="amber">[3]</span> DevOps</div>
+            <div><span class="amber">[4]</span> Databases</div>
+          </div>
+        </div>
+
+        <div style="text-align: center; color: var(--muted);">↓ phi3:mini ↓</div>
+
+        <!-- Output -->
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 10px;">Model output</div>
+          <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 26px;">
+[{"topic_id": <span class="amber">1</span>, "confidence": "high"},<br/> {"topic_id": <span class="bad">99</span>, "confidence": "high"}]
+          </div>
+        </div>
+
+        <div style="text-align: center; color: var(--muted);">↓ parser ↓</div>
+
+        <!-- Parsed -->
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 10px;">After index_map resolution</div>
+          <div style="background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 12px; padding: 22px 26px;">
+            <div><span class="teal">1</span> → <span class="muted">a1f4-c2…</span> ML <span class="teal">✓ kept</span></div>
+            <div><span class="bad">99</span> → <span class="muted">no match</span> <span class="bad">✗ dropped silently</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: lesson + extra coercions -->
+      <div style="display: flex; flex-direction: column; gap: 30px;">
+        <div class="h-body" style="font-size: 30px;">Topics are passed to the LLM as <span class="amber">integers</span>, not UUID strings.</div>
+        <div style="display: flex; flex-direction: column; gap: 16px; font-size: 26px;">
+          <div><span class="amber mono">▸</span> Unknown IDs → <span class="muted">dropped silently</span></div>
+          <div><span class="amber mono">▸</span> Bad confidence ("certain") → <span class="muted">coerced to "low"</span></div>
+          <div><span class="amber mono">▸</span> Markdown fences stripped before JSON parse</div>
+        </div>
+        <div class="callout">
+          <span class="label">Lesson</span>
+          <span style="font-size: 30px;">Structure the prompt so hallucination is <span class="amber">physically impossible</span>, not just statistically unlikely.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>19 / Superbrain</span></div>
+  </div>
+</section>
+
+<section data-label="21 Grounded QA with evidence gating">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 4 · What I built — Superbrain</span></div>
+      <h2 class="h-title">Grounded QA with <span class="amber">evidence gating</span>.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 60px; align-items: center;">
+      <!-- LEFT: full pipeline diagram -->
+      <div style="font-family: var(--font-mono); font-size: 24px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="padding: 14px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);">question → embed (nomic-embed-text)</div>
+        <div style="text-align: center; color: var(--muted);">↓</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <div style="padding: 14px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); text-align: center;">vector search · top-20</div>
+          <div style="padding: 14px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); text-align: center;">BM25 search · top-20</div>
+        </div>
+        <div style="text-align: center; color: var(--muted);">↓</div>
+        <div style="padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 10px; background: rgba(91,194,168,0.06); text-align: center;">RRF fusion → top-10</div>
+        <div style="text-align: center; color: var(--muted);">↓</div>
+        <div style="padding: 14px 22px; border: 1px dashed var(--amber); border-radius: 10px; text-align: center; color: var(--amber); font-weight: 500;">≥ 2 chunks AND max RRF ≥ 0.005?</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <div style="padding: 14px 22px; border: 1px solid var(--bad); border-radius: 10px; background: rgba(194,107,91,0.10); color: var(--bad); text-align: center;">✗ abort · "I don't know"</div>
+          <div style="padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 10px; background: rgba(91,194,168,0.06); color: var(--teal); text-align: center;">✓ generate · llama3.1:8b</div>
+        </div>
+        <div style="text-align: center; color: var(--muted);">↓</div>
+        <div style="padding: 14px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); text-align: center;">parse SOURCES · drop hallucinated chunk IDs</div>
+      </div>
+
+      <!-- RIGHT: key statements + quote -->
+      <div style="display: flex; flex-direction: column; gap: 28px;">
+        <div class="h-body" style="font-size: 28px;">The LLM cites by <span class="amber mono">chunk_id</span>. Any ID not in the evidence set is dropped.</div>
+        <div class="h-body" style="font-size: 28px;">You cannot hallucinate a source <span class="amber">that wasn't given to you.</span></div>
+        <div class="callout">
+          <span class="label">Lesson</span>
+          <span style="font-size: 30px;">An honest <span class="amber">"I don't know"</span> beats a confident wrong answer. <span class="muted">Build the gate, not just the generator.</span></span>
+        </div>
+        <div style="display: flex; gap: 26px; align-items: baseline;">
+          <span class="mono amber" style="font-size: 64px; font-weight: 700; line-height: 0.9;">2</span>
+          <div class="muted" style="font-size: 24px;">min evidence chunks</div>
+          <span class="mono amber" style="font-size: 64px; font-weight: 700; line-height: 0.9; margin-left: 30px;">.005</span>
+          <div class="muted" style="font-size: 24px;">min RRF score</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>20 / Superbrain</span></div>
+  </div>
+</section>
+
+<section data-label="22 Reciprocal rank fusion">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 4 · What I built — Superbrain</span></div>
+      <h2 class="h-title">Reciprocal rank fusion — <span class="muted">when vector and keyword disagree.</span></h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 70px; align-items: center;">
+      <!-- LEFT: merge visualization -->
+      <div style="display: flex; gap: 28px; font-family: var(--font-mono); font-size: 24px; align-items: stretch;">
+        <!-- Vector list -->
+        <div style="flex: 1;">
+          <div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 12px;">VECTOR · COSINE</div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="padding: 14px 18px; border: 1px solid var(--teal-dim); border-radius: 8px; background: rgba(91,194,168,0.10);">#1 · chunk_<span class="amber">A</span></div>
+            <div style="padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);">#2 · chunk_B</div>
+            <div style="padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);">#3 · chunk_C</div>
+            <div style="padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);">#4 · chunk_D</div>
+          </div>
+        </div>
+        <!-- Plus -->
+        <div style="display: flex; align-items: center; color: var(--muted); font-size: 36px;">+</div>
+        <!-- BM25 list -->
+        <div style="flex: 1;">
+          <div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 12px;">BM25 · TSVECTOR</div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);">#1 · chunk_E</div>
+            <div style="padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);">#2 · chunk_F</div>
+            <div style="padding: 14px 18px; border: 1px solid var(--teal-dim); border-radius: 8px; background: rgba(91,194,168,0.10);">#3 · chunk_<span class="amber">A</span></div>
+            <div style="padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);">#4 · chunk_G</div>
+          </div>
+        </div>
+        <!-- Equals -->
+        <div style="display: flex; align-items: center; color: var(--muted); font-size: 36px;">=</div>
+        <!-- Fused -->
+        <div style="flex: 1.1;">
+          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 12px;">FUSED · RRF</div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="padding: 14px 18px; border: 1px solid var(--amber-dim); border-radius: 8px; background: rgba(232,177,76,0.10); color: var(--amber);">chunk_<span style="font-weight:700;">A</span> · <span class="tabular">.0323</span></div>
+            <div style="padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);">chunk_B · <span class="tabular">.0164</span></div>
+            <div style="padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);">chunk_E · <span class="tabular">.0164</span></div>
+            <div style="padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);">chunk_F · <span class="tabular">.0161</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: formula + lesson -->
+      <div style="display: flex; flex-direction: column; gap: 32px;">
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 14px;">Formula</div>
+          <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 30px; font-family: var(--font-mono); font-size: 32px; text-align: center; line-height: 1.6;">
+            score(c) = Σ <span class="amber">1 / (60 + rank<sub>i</sub>)</span>
+          </div>
+        </div>
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 14px;">Worked example · chunk_A</div>
+          <div class="mono" style="font-size: 24px; line-height: 1.6;">
+            vector #1 → 1/(60+1) = .0164<br/>
+            BM25 #3 → 1/(60+3) = .0159<br/>
+            <span class="amber">total: .0323</span>
+          </div>
+        </div>
+        <div class="callout">
+          <span class="label">Why this matters</span>
+          <span style="font-size: 28px;">A chunk that shows up in <span class="amber">both</span> rankings gets a real boost. <span class="muted">Postgres does vector + FTS — no separate vector DB.</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>21 / Superbrain</span></div>
+  </div>
+</section>
+<!-- ============================================================ -->
+<!-- ACT 4.5 — WHAT ACTUALLY BROKE                                -->
+<!-- ============================================================ -->
+
+<!-- ============================================================ -->
+<!-- SLIDE 22-BRIDGE · Intermission — The honest part             -->
+<!-- ============================================================ -->
+<section data-label="22-BRIDGE Intermission">
+  <div class="frame" style="padding: 90px 110px;">
+    <div class="grid-bg"></div>
+
+    <!-- Centered typographic statement -->
+    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 60px;">
+
+      <div class="mono muted" style="font-size: 24px; letter-spacing: 0.28em; text-transform: uppercase;">Act 4 · Continued · The honest part</div>
+
+      <div style="font-size: 90px; font-weight: 700; line-height: 1.02; letter-spacing: -0.025em; color: var(--text); max-width: 1500px; text-wrap: balance;">
+        Let me tell you about the<br/><span class="amber">things that broke</span>.
+      </div>
+
+      <div style="max-width: 900px; font-size: 34px; color: var(--muted); line-height: 1.45; font-weight: 400;">
+        Every failure in this section made the system more trustworthy than the version that worked on the first try.
+      </div>
+
+      <!-- Four failure topics previewed -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; max-width: 1400px; width: 100%; margin-top: 20px;">
+        <div style="padding: 24px 28px; border: 1px solid rgba(194,107,91,0.35); border-radius: 14px; background: rgba(194,107,91,0.06);">
+          <div class="mono" style="font-size: 20px; letter-spacing: 0.18em; color: var(--bad); margin-bottom: 10px;">01</div>
+          <div style="font-size: 24px; font-weight: 500; line-height: 1.3; color: var(--text);">The model we planned to use wasn't ready.</div>
+        </div>
+        <div style="padding: 24px 28px; border: 1px solid rgba(194,107,91,0.35); border-radius: 14px; background: rgba(194,107,91,0.06);">
+          <div class="mono" style="font-size: 20px; letter-spacing: 0.18em; color: var(--bad); margin-bottom: 10px;">02</div>
+          <div style="font-size: 24px; font-weight: 500; line-height: 1.3; color: var(--text);">When the model talked back in formats we didn't ask for.</div>
+        </div>
+        <div style="padding: 24px 28px; border: 1px solid rgba(194,107,91,0.35); border-radius: 14px; background: rgba(194,107,91,0.06);">
+          <div class="mono" style="font-size: 20px; letter-spacing: 0.18em; color: var(--bad); margin-bottom: 10px;">03</div>
+          <div style="font-size: 24px; font-weight: 500; line-height: 1.3; color: var(--text);">The async session that closed before we were done with it.</div>
+        </div>
+        <div style="padding: 24px 28px; border: 1px solid rgba(194,107,91,0.35); border-radius: 14px; background: rgba(194,107,91,0.06);">
+          <div class="mono" style="font-size: 20px; letter-spacing: 0.18em; color: var(--bad); margin-bottom: 10px;">04</div>
+          <div style="font-size: 24px; font-weight: 500; line-height: 1.3; color: var(--text);">The architecture that worked on GPT-4o and fell apart on everything else.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>Intermission / What broke</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 22A · The model we planned to use wasn't ready         -->
+<!-- ============================================================ -->
+<section data-label="22A The model we planned to use wasnt ready">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act" style="color: var(--bad);">Act 4 · What actually broke</span></div>
+      <h2 class="h-title">The model we planned to use <span class="amber">wasn't ready</span>.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 70px; align-items: center;">
+      <!-- LEFT: the architecture note still in the code -->
+      <div>
+        <div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 14px;">docs/ARCHITECTURE.md · still in the source</div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 36px; font-family: var(--font-mono); font-size: 26px; line-height: 1.8;">
+          <div style="color: var(--muted);">| Digest model &nbsp;&nbsp;| <span style="color: var(--text);">llama3.1:8b</span> &nbsp;|</div>
+          <div style="margin-top: 14px; padding: 16px 22px; background: rgba(232,177,76,0.08); border-radius: 8px; border-left: 3px solid var(--amber-dim); font-size: 24px;">
+            <span class="amber">//</span> <span class="muted">swap to </span><span class="amber">lfm2-7b</span><span class="muted"> when available</span>
+          </div>
+        </div>
+        <div class="muted mono" style="font-size: 24px; margin-top: 16px; letter-spacing: 0.08em;">A comment we left in the code. Still there.</div>
+
+        <!-- Timeline of what we expected vs reality -->
+        <div style="margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
+          <div style="padding: 18px 22px; border: 1px solid rgba(194,107,91,0.4); border-radius: 10px; background: rgba(194,107,91,0.05);">
+            <div class="mono" style="color: var(--bad); font-size: 22px; letter-spacing: 0.14em; margin-bottom: 8px;">PLANNED</div>
+            <div style="font-size: 24px;">LFM2-7B via Ollama<br/><span class="muted">smaller · faster · efficient</span></div>
+          </div>
+          <div style="padding: 18px 22px; border: 1px solid var(--teal-dim); border-radius: 10px; background: rgba(91,194,168,0.06);">
+            <div class="mono teal" style="font-size: 22px; letter-spacing: 0.14em; margin-bottom: 8px;">SHIPPED</div>
+            <div style="font-size: 24px;">llama3.1:8b<br/><span class="muted">already working · trusted</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: the story + lesson -->
+      <div style="display: flex; flex-direction: column; gap: 28px;">
+        <div class="h-body" style="font-size: 28px;">LiquidAI's <span class="amber">LFM2-7B</span> was the planned digest model — efficient, purpose-built for constrained generation.</div>
+        <div style="display: flex; flex-direction: column; gap: 14px; font-size: 26px; line-height: 1.4;">
+          <div><span class="bad mono">✗</span> Ollama-compatible build wasn't stable at build time</div>
+          <div><span class="bad mono">✗</span> No evals existed for our specific digest task</div>
+          <div><span class="bad mono">✗</span> "Available soon" is not a production contract</div>
+          <div><span class="teal mono">✓</span> llama3.1:8b was already in the pipeline and trusted</div>
+        </div>
+        <div class="callout">
+          <span class="label">Lesson</span>
+          <span style="font-size: 28px;">Build to what <span class="amber">ships today</span>. Don't architect your pipeline around a model that isn't in your hands.</span>
+        </div>
+        <div style="font-size: 24px; color: var(--muted); font-style: italic;">Model availability is a real constraint, not a detail.</div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>Failure 01 / What broke</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 22B · When phi3:mini talked back                       -->
+<!-- ============================================================ -->
+<section data-label="22B When phi3:mini talked back">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act" style="color: var(--bad);">Act 4 · What actually broke</span></div>
+      <h2 class="h-title">When <span class="amber">phi3:mini</span> talked back.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: stretch;">
+      <!-- LEFT: what the model actually returned -->
+      <div style="display: flex; flex-direction: column; gap: 22px;">
+        <div class="mono" style="color: var(--bad); font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase;">What we got back</div>
+
+        <div>
+          <div class="mono muted" style="font-size: 22px; margin-bottom: 8px; letter-spacing: 0.12em;">FAILURE 1 · confidence outside the schema</div>
+          <pre class="code" style="font-size: 24px; border-color: rgba(194,107,91,0.4); background: rgba(194,107,91,0.05);">[{"topic_id": 1, "confidence": <span class="bad">"very_high"</span>}]
+<span class="c"># → ValueError: invalid enum value</span></pre>
+        </div>
+
+        <div>
+          <div class="mono muted" style="font-size: 22px; margin-bottom: 8px; letter-spacing: 0.12em;">FAILURE 2 · json wrapped in markdown fences</div>
+          <pre class="code" style="font-size: 24px; border-color: rgba(194,107,91,0.4); background: rgba(194,107,91,0.05);"><span class="bad">```json</span>
+[{"topic_id": 1, "confidence": "high"}]
+<span class="bad">```</span>
+<span class="c"># → json.JSONDecodeError</span></pre>
+        </div>
+
+        <div>
+          <div class="mono muted" style="font-size: 22px; margin-bottom: 8px; letter-spacing: 0.12em;">FAILURE 3 · object wrapper instead of bare array</div>
+          <pre class="code" style="font-size: 24px; border-color: rgba(194,107,91,0.4); background: rgba(194,107,91,0.05);"><span class="bad">{"matches":</span> [{"topic_id": 1...}]<span class="bad">}</span>
+<span class="c"># → TypeError: list indices must be int</span></pre>
+        </div>
+      </div>
+
+      <!-- RIGHT: fixes + reframe -->
+      <div style="display: flex; flex-direction: column; gap: 22px;">
+        <div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase;">The defensive fixes shipped</div>
+
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div style="padding: 20px 24px; background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 10px;">
+            <div class="teal mono" style="font-size: 22px; margin-bottom: 6px;">FIX 1 · confidence coercion</div>
+            <div style="font-size: 24px;">Any value ∉ {high, medium, low} → coerced to <span class="teal">"low"</span></div>
+          </div>
+          <div style="padding: 20px 24px; background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 10px;">
+            <div class="teal mono" style="font-size: 22px; margin-bottom: 6px;">FIX 2 · fence stripping</div>
+            <div style="font-size: 24px;">Strip <span class="teal">```json ... ```</span> before JSON parse</div>
+          </div>
+          <div style="padding: 20px 24px; background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 10px;">
+            <div class="teal mono" style="font-size: 22px; margin-bottom: 6px;">FIX 3 · wrapper detection</div>
+            <div style="font-size: 24px;">Check for <span class="teal">{"matches": [...]}</span> → extract array</div>
+          </div>
+        </div>
+
+        <div class="callout" style="margin-top: auto;">
+          <span class="label">The reframe</span>
+          <span style="font-size: 26px;">The model wasn't broken. <span class="amber">Our prompt wasn't tight enough.</span> Every fix was fixing the contract, not the model.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>Failure 02 / What broke</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 22C · The session that wouldn't stay open              -->
+<!-- ============================================================ -->
+<section data-label="22C The session that wouldnt stay open">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act" style="color: var(--bad);">Act 4 · What actually broke</span></div>
+      <h2 class="h-title">The session that <span class="amber">wouldn't stay open</span>.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 60px; align-items: center;">
+      <!-- LEFT: three attempts -->
+      <div style="display: flex; flex-direction: column; gap: 18px; font-family: var(--font-mono); font-size: 23px;">
+
+        <div style="padding: 20px 26px; border: 1px solid rgba(194,107,91,0.4); border-radius: 12px; background: rgba(194,107,91,0.05);">
+          <div style="color: var(--bad); letter-spacing: 0.14em; font-size: 22px; margin-bottom: 10px;">ATTEMPT 1 · build use case at startup</div>
+          <pre class="code" style="font-size: 22px; border: none; padding: 0; background: transparent; margin: 0 0 8px 0;"><span class="c"># startup: session created once, stored</span>
+use_case = GenerateDailyDigestUseCase(session)</pre>
+          <div style="color: var(--bad); font-size: 22px;">7am: sqlalchemy.exc.InvalidRequestError<br/><span class="muted">session already closed</span></div>
+        </div>
+
+        <div style="padding: 20px 26px; border: 1px solid rgba(194,107,91,0.4); border-radius: 12px; background: rgba(194,107,91,0.05);">
+          <div style="color: var(--bad); letter-spacing: 0.14em; font-size: 22px; margin-bottom: 10px;">ATTEMPT 2 · factory at job time</div>
+          <pre class="code" style="font-size: 22px; border: none; padding: 0; background: transparent; margin: 0 0 8px 0;"><span class="k">async with</span> get_session() <span class="k">as</span> session:
+    use_case = DigestUseCase(session)
+<span class="c"># context manager exits → session closes</span>
+<span class="k">await</span> use_case.execute(...)  <span class="c"># ← boom</span></pre>
+          <div style="color: var(--bad); font-size: 22px;">DetachedInstanceError inside execute()</div>
+        </div>
+
+        <div style="padding: 20px 26px; border: 1px solid var(--teal-dim); border-radius: 12px; background: rgba(91,194,168,0.06);">
+          <div style="color: var(--teal); letter-spacing: 0.14em; font-size: 22px; margin-bottom: 10px;">ATTEMPT 3 · closure in main.py ✓</div>
+          <pre class="code" style="font-size: 22px; border: none; padding: 0; background: transparent; margin: 0;"><span class="k">async def</span> <span class="n">_run_digest</span>(target_date, triggered_by):
+    <span class="k">async with</span> get_session_factory()() <span class="k">as</span> s:
+        <span class="c"># session lives for the entire call</span>
+        uc = GenerateDailyDigestUseCase(s, ...)
+        <span class="k">return await</span> uc.execute(target_date, ...)</pre>
+        </div>
+      </div>
+
+      <!-- RIGHT: lesson -->
+      <div style="display: flex; flex-direction: column; gap: 28px;">
+        <div class="h-body" style="font-size: 28px; line-height: 1.35;">APScheduler fires at 7am UTC.<br/>Job touches the database.<br/>Session is already dead.</div>
+        <div style="display: flex; flex-direction: column; gap: 14px; font-size: 26px;">
+          <div><span class="amber mono">▸</span> Three attempts, each failed differently</div>
+          <div><span class="amber mono">▸</span> Root cause: async resource lifetime isn't intuitive</div>
+          <div><span class="amber mono">▸</span> Fresh session per execution is always safer</div>
+          <div><span class="amber mono">▸</span> The pattern already existed in our API background tasks</div>
+        </div>
+        <div class="callout">
+          <span class="label">Lesson</span>
+          <span style="font-size: 28px;">Small models don't cause all your bugs. <span class="amber">Async does.</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>Failure 03 / What broke</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 22D · GPT-4o taught us the wrong architecture          -->
+<!-- ============================================================ -->
+<section data-label="22D GPT-4o taught us the wrong architecture">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act" style="color: var(--bad);">Act 4 · What actually broke</span></div>
+      <h2 class="h-title">GPT-4o taught us the <span class="amber">wrong</span> architecture.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: stretch;">
+
+      <!-- LEFT: GPT-4o spike -->
+      <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 44px; display: flex; flex-direction: column; gap: 18px;">
+        <div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase;">The architecture spike · GPT-4o</div>
+        <div class="h-sub" style="font-size: 32px; line-height: 1.3;">One prompt.<br/>Beautiful citations.<br/>Nothing hallucinated.</div>
+        <div style="height: 1px; background: var(--border);"></div>
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 25px; font-family: var(--font-mono); color: var(--muted);">
+          <div>— no evidence gate needed</div>
+          <div>— no SOURCES format required</div>
+          <div>— no chunk ID validation</div>
+          <div>— just worked</div>
+        </div>
+        <div style="margin-top: auto; text-align: center; font-size: 28px; color: var(--muted); padding: 16px; background: var(--surface-2); border-radius: 10px; font-style: italic;">"wow this is easy"</div>
+      </div>
+
+      <!-- RIGHT: llama3.1:8b exposed every gap -->
+      <div style="background: rgba(232,177,76,0.06); border: 1px solid var(--amber-dim); border-radius: 18px; padding: 44px; display: flex; flex-direction: column; gap: 18px;">
+        <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase;">Same prompt · llama3.1:8b</div>
+        <div style="display: flex; flex-direction: column; gap: 12px; font-size: 26px;">
+          <div><span class="bad mono">✗</span> Cited chunk IDs it invented</div>
+          <div><span class="bad mono">✗</span> Confident answers on thin evidence</div>
+          <div><span class="bad mono">✗</span> SOURCES format was inconsistent</div>
+          <div><span class="bad mono">✗</span> No way to tell signal from hallucination</div>
+        </div>
+        <div style="height: 1px; background: var(--amber-dim); opacity: 0.5;"></div>
+        <div class="mono amber" style="font-size: 22px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 10px;">Three engineering additions required</div>
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 24px; font-family: var(--font-mono);">
+          <div><span class="teal">+</span> Evidence sufficiency gate (abort if weak)</div>
+          <div><span class="teal">+</span> SOURCES line with chunk IDs in prompt</div>
+          <div><span class="teal">+</span> ID validation against evidence set</div>
+        </div>
+        <div style="margin-top: auto; text-align: center; font-size: 24px; color: var(--teal); padding: 14px; background: rgba(91,194,168,0.08); border-radius: 10px;">more trustworthy than GPT-4o ever was</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 32px; text-align: center; font-size: 30px; color: var(--text);">
+      GPT-4o's cleverness was <span class="muted">hiding architectural gaps</span>. The smaller model <span class="amber">forced me to close them</span>.
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>Failure 04 / What broke</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- ACT 5 — LESSONS LEARNED                                      -->
+<!-- ============================================================ -->
+
+<section data-label="23 Lesson 1 Orchestration not autonomy">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 5 · Lessons learned</span></div>
+      <h2 class="h-title"><span class="amber mono" style="font-size: 38px;">LESSON 01 ·</span> Agentic AI is orchestration, not autonomy.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;">
+      <!-- LEFT: the dream -->
+      <div>
+        <div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 20px;">The dream</div>
+        <div style="position: relative; height: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;">
+          <!-- Central blob -->
+          <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 26px 38px; border: 2px solid var(--amber); border-radius: 14px; background: rgba(232,177,76,0.10); color: var(--amber); font-family: var(--font-mono); font-size: 28px; font-weight: 600;">LLM</div>
+          <!-- Chaotic arrows -->
+          <div style="position: absolute; inset: 0; font-family: var(--font-mono); color: var(--muted); font-size: 24px;">
+            <div style="position: absolute; top: 30px; left: 30px;">tool? ↘</div>
+            <div style="position: absolute; top: 30px; right: 30px;">↙ memory?</div>
+            <div style="position: absolute; bottom: 30px; left: 30px;">↗ retry?</div>
+            <div style="position: absolute; bottom: 30px; right: 30px;">retry? ↖</div>
+            <div style="position: absolute; top: 50%; left: 24px;">do? →</div>
+            <div style="position: absolute; top: 50%; right: 24px;">← anything?</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: the reality -->
+      <div>
+        <div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 20px;">The reality</div>
+        <div style="height: 380px; background: var(--surface); border: 1px solid var(--teal-dim); border-radius: 16px; padding: 30px; display: flex; flex-direction: column; gap: 14px; font-family: var(--font-mono); font-size: 24px;">
+          <div style="padding: 12px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">input · validate schema</div>
+          <div style="color: var(--muted); padding-left: 12px;">↓</div>
+          <div style="padding: 12px 18px; border: 1px solid var(--teal-dim); border-radius: 8px; background: rgba(91,194,168,0.06); color: var(--teal);">retrieve · top-k</div>
+          <div style="color: var(--muted); padding-left: 12px;">↓</div>
+          <div style="padding: 12px 18px; border: 1px solid var(--amber-dim); border-radius: 8px; background: rgba(232,177,76,0.06); color: var(--amber);">llm decide · JSON only</div>
+          <div style="color: var(--muted); padding-left: 12px;">↓ valid? → fallback if not</div>
+          <div style="padding: 12px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">act · log · observe</div>
+        </div>
+      </div>
+
+      <!-- Bottom line spans both -->
+      <div style="grid-column: 1 / -1; text-align: center; font-size: 32px; color: var(--muted); margin-top: 10px;">
+        Each LLM call has a specific input format, an expected output schema, a validation step, and a <span class="amber">fallback</span>.
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>22 / Lessons</span></div>
+  </div>
+</section>
+
+<section data-label="24 Lesson 2 Prompt is the contract">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 5 · Lessons learned</span></div>
+      <h2 class="h-title"><span class="amber mono" style="font-size: 38px;">LESSON 02 ·</span> The prompt is the contract.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 36px; align-items: stretch;">
+      <!-- BAD -->
+      <div>
+        <div class="mono" style="color: var(--bad); font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 14px;">BEFORE · vague</div>
+<pre class="code" style="border-color: rgba(194,107,91,0.4); background: rgba(194,107,91,0.05); font-size: 24px;"><span class="s">"Classify this article."</span>
+
+<span class="c"># What the model does:</span>
+<span class="c"># - Returns prose paragraphs</span>
+<span class="c"># - Wraps in markdown sometimes</span>
+<span class="c"># - Invents categories</span>
+<span class="c"># - Random capitalisation</span>
+<span class="c"># You parse free text. You lose.</span></pre>
+      </div>
+
+      <!-- GOOD -->
+      <div>
+        <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 14px;">AFTER · contract</div>
+<pre class="code" style="border-color: var(--amber-dim); background: rgba(232,177,76,0.05); font-size: 24px;"><span class="c"># role + task + schema + fallback</span>
+<span class="s">"""You are a content classifier.
+Topics (use integer id):
+[1] ML  [2] Security  [3] DevOps
+
+Output JSON:
+[{"topic_id": &lt;int&gt;,
+  "confidence": "high"|"medium"|"low",
+  "reason": "&lt;one sentence&gt;"}]
+
+Return [] if no match."""</span></pre>
+      </div>
+
+      <div style="grid-column: 1 / -1; margin-top: 4px;">
+        <div class="callout">
+          <span class="label">The rule</span>
+          <span style="font-size: 26px;">Every prompt specifies: <span class="amber">the role</span>, <span class="amber">the task</span>, <span class="amber">the output schema</span>, and <span class="amber">what to do if you can't complete it.</span></span>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>23 / Lessons</span></div>
+  </div>
+</section>
+
+<section data-label="25 Lesson 3 Constraints are features">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 5 · Lessons learned</span></div>
+      <h2 class="h-title"><span class="amber mono" style="font-size: 38px;">LESSON 03 ·</span> Constraints are features in disguise.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 70px; align-items: center;">
+      <!-- LEFT: visual -->
+      <div style="display: flex; flex-direction: column; gap: 36px;">
+        <!-- Pipe -->
+        <div>
+          <div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 14px;">With phi3:mini · explicit stages</div>
+          <div style="display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 24px;">
+            <div style="flex: 1; padding: 14px; border: 1px solid var(--teal-dim); border-radius: 8px; background: rgba(91,194,168,0.06); text-align: center;">parse</div>
+            <span class="muted">→</span>
+            <div style="flex: 1; padding: 14px; border: 1px solid var(--teal-dim); border-radius: 8px; background: rgba(91,194,168,0.06); text-align: center;">classify</div>
+            <span class="muted">→</span>
+            <div style="flex: 1; padding: 14px; border: 1px solid var(--teal-dim); border-radius: 8px; background: rgba(91,194,168,0.06); text-align: center;">validate</div>
+            <span class="muted">→</span>
+            <div style="flex: 1; padding: 14px; border: 1px solid var(--teal-dim); border-radius: 8px; background: rgba(91,194,168,0.06); text-align: center;">persist</div>
+          </div>
+          <div class="muted" style="font-size: 24px; margin-top: 12px;">debuggable · observable · reliable</div>
+        </div>
+        <!-- Black box -->
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 14px;">With GPT-4 doing everything</div>
+          <div style="height: 90px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 26px; color: var(--muted);">
+            ░ ░ ░  black box  ░ ░ ░
+          </div>
+          <div class="muted" style="font-size: 24px; margin-top: 12px;">opaque · expensive · "but it usually works"</div>
+        </div>
+      </div>
+
+      <!-- RIGHT: quote -->
+      <div style="border-left: 4px solid var(--amber); padding-left: 44px;">
+        <div style="font-size: 44px; line-height: 1.2; color: var(--text); font-weight: 500; letter-spacing: -0.01em; text-wrap: pretty;">
+          "If your system only works with a <span class="amber">powerful model</span>, you haven't built a system —<br/>you've built a <span class="amber">prompt</span>."
+        </div>
+        <div class="mono muted" style="margin-top: 32px; font-size: 24px; letter-spacing: 0.12em;">— THE THING I WISH I'D KNOWN ON DAY ONE</div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>24 / Lessons</span></div>
+  </div>
+</section>
+<section data-label="26 Lesson 4 Observability">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 5 · Lessons learned</span></div>
+      <h2 class="h-title"><span class="amber mono" style="font-size: 38px;">LESSON 04 ·</span> Observability is not optional.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 60px; align-items: center;">
+      <!-- LEFT: dashboard mockup -->
+      <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 36px 40px; font-family: var(--font-mono);">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 24px;">
+          <div class="mono" style="font-size: 24px; letter-spacing: 0.16em; color: var(--muted);">GET /observe/metrics</div>
+          <div class="mono teal" style="font-size: 24px;">● live</div>
+        </div>
+        <!-- Latency band -->
+        <div style="margin-bottom: 26px;">
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em; margin-bottom: 10px;">QA ANSWER LATENCY (s)</div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+            <div><div class="muted" style="font-size: 24px;">p50</div><div class="amber tabular" style="font-size: 38px; font-weight: 600;">4.2</div></div>
+            <div><div class="muted" style="font-size: 24px;">p95</div><div class="amber tabular" style="font-size: 38px; font-weight: 600;">9.1</div></div>
+            <div><div class="muted" style="font-size: 24px;">p99</div><div class="amber tabular" style="font-size: 38px; font-weight: 600;">11.8</div></div>
+          </div>
+        </div>
+        <!-- Counters -->
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; font-size: 24px;">
+          <div style="display: flex; justify-content: space-between; padding: 12px 18px; background: var(--bg); border-radius: 8px;"><span class="muted">ingestion.succeeded</span><span class="tabular">1,847</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 12px 18px; background: var(--bg); border-radius: 8px;"><span class="muted">qa.aborted</span><span class="tabular amber">42</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 12px 18px; background: var(--bg); border-radius: 8px;"><span class="muted">classify.fallback</span><span class="tabular">9</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 12px 18px; background: var(--bg); border-radius: 8px;"><span class="muted">eval.recall@10</span><span class="tabular teal">0.84</span></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: what we log -->
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        <div class="h-body" style="font-size: 26px;"><span class="amber">Every</span> LLM call: model, prompt template, latency, status, related entity.</div>
+        <div class="h-body" style="font-size: 26px;"><span class="amber">Every</span> QA query: question, answer, retrieval + answer latency, abort reason.</div>
+        <div class="h-body" style="font-size: 26px;"><span class="amber">Every</span> pipeline run: success / failure / dedup rates.</div>
+        <div class="h-body" style="font-size: 26px;"><span class="amber">Eval harness</span>: recall@k, URL coverage, citation presence, groundedness.</div>
+        <div class="callout">
+          <span class="label">The hard rule</span>
+          <span style="font-size: 30px;">Without these, you're <span class="muted">guessing</span>. With these, you can <span class="teal">improve</span>.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>25 / Lessons</span></div>
+  </div>
+</section>
+
+<section data-label="27 Lesson 5 Retrieval is the answer">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 5 · Lessons learned</span></div>
+      <h2 class="h-title"><span class="amber mono" style="font-size: 38px;">LESSON 05 ·</span> Retrieval quality is answer quality.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 70px; align-items: center;">
+      <!-- LEFT: big number -->
+      <div>
+        <div style="font-size: 280px; line-height: 0.85; font-weight: 700; color: var(--amber); letter-spacing: -0.05em;">80<span style="font-size: 140px;">%</span></div>
+        <div class="h-body" style="font-size: 30px; margin-top: 20px; line-height: 1.25;">of your QA improvement budget should go to <span class="amber">retrieval</span>.</div>
+        <div class="muted" style="font-size: 24px; margin-top: 14px;">the generator is the easy part</div>
+      </div>
+
+      <!-- RIGHT: paid off / didn't -->
+      <div style="display: flex; flex-direction: column; gap: 36px;">
+        <div>
+          <div class="mono teal" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 16px;">What paid off</div>
+          <div style="display: flex; flex-direction: column; gap: 14px; font-size: 26px;">
+            <div><span class="teal mono">+</span> Hybrid retrieval (vector + BM25)</div>
+            <div><span class="teal mono">+</span> RRF fusion across the two</div>
+            <div><span class="teal mono">+</span> Per-chunk embeddings, not per-article</div>
+            <div><span class="teal mono">+</span> Postgres FTS index on chunk content</div>
+          </div>
+        </div>
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 16px;">What didn't matter much</div>
+          <div style="display: flex; flex-direction: column; gap: 14px; font-size: 26px;">
+            <div class="muted"><span class="dim mono">·</span> Prompt length tweaks</div>
+            <div class="muted"><span class="dim mono">·</span> Temperature tuning</div>
+            <div class="muted"><span class="dim mono">·</span> Switching to a larger model for generation</div>
+          </div>
+        </div>
+        <div style="font-size: 28px; color: var(--text); padding-top: 18px; border-top: 1px solid var(--border);">Garbage in, hallucination out. <span class="amber">The LLM can only cite what it was given.</span></div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>26 / Lessons</span></div>
+  </div>
+</section>
+
+<section data-label="28 Lesson 6 Local-only is a feature">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 5 · Lessons learned</span></div>
+      <h2 class="h-title"><span class="amber mono" style="font-size: 38px;">LESSON 06 ·</span> Local-only changes the design space.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;">
+      <!-- LEFT: enumeration -->
+      <div style="display: flex; flex-direction: column; gap: 22px;">
+        <div class="h-body" style="font-size: 28px;"><span class="amber mono">▸</span> Data never leaves your hardware.</div>
+        <div class="h-body" style="font-size: 28px;"><span class="amber mono">▸</span> Unlocks: <span class="muted">medical, legal, source code, defense, air-gapped.</span></div>
+        <div class="h-body" style="font-size: 28px;"><span class="amber mono">▸</span> No rate limits. No quota. No per-token bill.</div>
+        <div class="h-body" style="font-size: 28px;"><span class="amber mono">▸</span> Latency is bounded by <em class="text">your hardware</em>, not someone's SLA.</div>
+        <div class="h-body" style="font-size: 28px;"><span class="amber mono">▸</span> Compliance and residency stop being a footnote.</div>
+      </div>
+
+      <!-- RIGHT: pull quote -->
+      <div style="background: rgba(232,177,76,0.06); border: 1px solid var(--amber-dim); border-radius: 18px; padding: 60px 56px;">
+        <div style="font-size: 52px; line-height: 1.18; font-weight: 500; letter-spacing: -0.01em; color: var(--text); text-wrap: pretty;">
+          Privacy is not a <span class="muted">constraint you work around</span>.<br/><br/>
+          It's a <span class="amber">feature your users pay for.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>27 / Lessons</span></div>
+  </div>
+</section>
+<!-- ACT 6 — TAKEAWAYS -->
+
+<section data-label="29 Mental model">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 6 · Takeaways</span></div>
+      <h2 class="h-title">A mental model for local-first agentic AI.</h2>
+    </div>
+
+    <div class="body-grow" style="justify-content: center;">
+      <div style="display: flex; flex-direction: column; gap: 18px; max-width: 1600px; margin: 0 auto; width: 100%;">
+
+        <div style="display: grid; grid-template-columns: 280px 1fr; gap: 36px; align-items: center;">
+          <div style="text-align: right;">
+            <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em;">LAYER 1</div>
+            <div class="h-sub" style="font-size: 32px; margin-top: 4px;">Entry points</div>
+          </div>
+          <div style="padding: 26px 36px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; font-size: 26px;">
+            <span class="mono" style="font-size: 24px; color: var(--text);">API · Bot · CLI · Scheduler</span>
+            <span class="muted" style="margin-left: 24px; font-size: 24px;">— how the world reaches you</span>
+          </div>
+        </div>
+
+        <div style="text-align: center; color: var(--muted); font-size: 26px;">↓</div>
+
+        <div style="display: grid; grid-template-columns: 280px 1fr; gap: 36px; align-items: center;">
+          <div style="text-align: right;">
+            <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em;">LAYER 2</div>
+            <div class="h-sub" style="font-size: 32px; margin-top: 4px;">Orchestration</div>
+          </div>
+          <div style="padding: 26px 36px; background: rgba(232,177,76,0.08); border: 1px solid var(--amber-dim); border-radius: 14px; font-size: 26px;">
+            <span class="mono amber" style="font-size: 24px;">bounded flows with explicit contracts</span>
+            <span class="muted" style="margin-left: 24px; font-size: 24px;">— input → schema → fallback</span>
+          </div>
+        </div>
+
+        <div style="text-align: center; color: var(--muted); font-size: 26px;">↓</div>
+
+        <div style="display: grid; grid-template-columns: 280px 1fr; gap: 36px; align-items: center;">
+          <div style="text-align: right;">
+            <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em;">LAYER 3</div>
+            <div class="h-sub" style="font-size: 32px; margin-top: 4px;">LLM calls</div>
+          </div>
+          <div style="padding: 26px 36px; background: rgba(232,177,76,0.08); border: 1px solid var(--amber-dim); border-radius: 14px; font-size: 26px;">
+            <span class="mono amber" style="font-size: 24px;">right model for the task · validated output</span>
+            <span class="muted" style="margin-left: 24px; font-size: 24px;">— small unless you must</span>
+          </div>
+        </div>
+
+        <div style="text-align: center; color: var(--muted); font-size: 26px;">↓</div>
+
+        <div style="display: grid; grid-template-columns: 280px 1fr; gap: 36px; align-items: center;">
+          <div style="text-align: right;">
+            <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em;">LAYER 4</div>
+            <div class="h-sub" style="font-size: 32px; margin-top: 4px;">Retrieval</div>
+          </div>
+          <div style="padding: 26px 36px; background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 14px; font-size: 26px;">
+            <span class="mono teal" style="font-size: 24px;">hybrid · vector + BM25 · RRF fusion</span>
+            <span class="muted" style="margin-left: 24px; font-size: 24px;">— the answer's quality lives here</span>
+          </div>
+        </div>
+
+        <div style="text-align: center; color: var(--muted); font-size: 26px;">↓</div>
+
+        <div style="display: grid; grid-template-columns: 280px 1fr; gap: 36px; align-items: center;">
+          <div style="text-align: right;">
+            <div class="mono muted" style="font-size: 24px; letter-spacing: 0.18em;">LAYER 5</div>
+            <div class="h-sub" style="font-size: 32px; margin-top: 4px;">Storage</div>
+          </div>
+          <div style="padding: 26px 36px; background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 14px; font-size: 26px;">
+            <span class="mono teal" style="font-size: 24px;">Postgres · relational + vector + FTS, one store</span>
+            <span class="muted" style="margin-left: 24px; font-size: 24px;">— no separate vector DB</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>28 / Takeaways</span></div>
+  </div>
+</section>
+
+<section data-label="30 LLM or SLM checklist">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 6 · Takeaways</span></div>
+      <h2 class="h-title">LLM or SLM — a checklist.</h2>
+    </div>
+
+    <div class="body-grow" style="justify-content: center;">
+      <div style="max-width: 1700px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 14px;">
+
+        <div style="display: grid; grid-template-columns: 1.4fr 0.5fr 1fr; gap: 28px; padding: 24px 36px; background: var(--surface-2); border-radius: 14px; font-family: var(--font-mono); font-size: 24px; letter-spacing: 0.16em; color: var(--muted); text-transform: uppercase;">
+          <div>Question</div><div style="text-align: center;">Answer</div><div>Pick</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.4fr 0.5fr 1fr; gap: 28px; padding: 26px 36px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; align-items: center;">
+          <div style="font-size: 28px;">Is the task repetitive and high-volume?</div>
+          <div style="text-align: center;"><span class="tag teal" style="font-size: 24px;">YES</span></div>
+          <div class="mono teal" style="font-size: 26px;">→ SLM</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.4fr 0.5fr 1fr; gap: 28px; padding: 26px 36px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; align-items: center;">
+          <div style="font-size: 28px;">Does it require structured output?</div>
+          <div style="text-align: center;"><span class="tag teal" style="font-size: 24px;">YES</span></div>
+          <div class="mono teal" style="font-size: 26px;">→ SLM</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.4fr 0.5fr 1fr; gap: 28px; padding: 26px 36px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; align-items: center;">
+          <div style="font-size: 28px;">Is latency under 2&nbsp;s required?</div>
+          <div style="text-align: center;"><span class="tag teal" style="font-size: 24px;">YES</span></div>
+          <div class="mono teal" style="font-size: 26px;">→ SLM</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.4fr 0.5fr 1fr; gap: 28px; padding: 26px 36px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; align-items: center;">
+          <div style="font-size: 28px;">Does it need nuanced multi-step reasoning?</div>
+          <div style="text-align: center;"><span class="tag amber" style="font-size: 24px;">YES</span></div>
+          <div class="mono amber" style="font-size: 26px;">→ LLM</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.4fr 0.5fr 1fr; gap: 28px; padding: 26px 36px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; align-items: center;">
+          <div style="font-size: 28px;">One-off creative or synthesis task?</div>
+          <div style="text-align: center;"><span class="tag amber" style="font-size: 24px;">YES</span></div>
+          <div class="mono amber" style="font-size: 26px;">→ LLM</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.4fr 0.5fr 1fr; gap: 28px; padding: 26px 36px; background: rgba(232,177,76,0.08); border: 1px solid var(--amber-dim); border-radius: 14px; align-items: center;">
+          <div style="font-size: 28px;">Combining both in a pipeline?</div>
+          <div style="text-align: center;"><span class="tag amber" style="font-size: 24px;">ALWAYS</span></div>
+          <div class="mono amber" style="font-size: 26px;">→ orchestrate</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>29 / Takeaways</span></div>
+  </div>
+</section>
+
+<section data-label="31 Three things I'd tell past me">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 6 · Takeaways</span></div>
+      <h2 class="h-title">Three things I'd tell past me.</h2>
+    </div>
+
+    <div class="body-grow" style="justify-content: center;">
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; max-width: 1700px; margin: 0 auto; width: 100%;">
+
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 50px 44px; display: flex; flex-direction: column; gap: 28px; min-height: 540px;">
+          <div style="font-size: 120px; font-weight: 700; line-height: 0.85; color: var(--amber); letter-spacing: -0.04em;">01</div>
+          <div style="font-size: 36px; line-height: 1.18; font-weight: 500; color: var(--text);">Design your <span class="amber">prompts</span> before you write a line of code.</div>
+          <div class="muted" style="font-size: 24px; margin-top: auto;">The prompt <em>is</em> the spec.</div>
+        </div>
+
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 50px 44px; display: flex; flex-direction: column; gap: 28px; min-height: 540px;">
+          <div style="font-size: 120px; font-weight: 700; line-height: 0.85; color: var(--amber); letter-spacing: -0.04em;">02</div>
+          <div style="font-size: 36px; line-height: 1.18; font-weight: 500; color: var(--text);">Pick the <span class="amber">smallest model</span> that works for each step.</div>
+          <div class="muted" style="font-size: 24px; margin-top: auto;">Use the big model only where it earns its cost.</div>
+        </div>
+
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 50px 44px; display: flex; flex-direction: column; gap: 28px; min-height: 540px;">
+          <div style="font-size: 120px; font-weight: 700; line-height: 0.85; color: var(--amber); letter-spacing: -0.04em;">03</div>
+          <div style="font-size: 36px; line-height: 1.18; font-weight: 500; color: var(--text);">Build the <span class="amber">eval harness</span> first, not last.</div>
+          <div class="muted" style="font-size: 24px; margin-top: auto;">You cannot improve what you do not measure.</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>30 / Takeaways</span></div>
+  </div>
+</section>
+
+<section data-label="32 Closing">
+  <div class="frame">
+    <div class="title-row">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 6 · Takeaways</span></div>
+      <h2 class="h-title">The new paradigm requires new <span class="amber">engineering muscles</span>, not new magic.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 70px; align-items: center;">
+      <!-- LEFT: final quote -->
+      <div style="border-left: 4px solid var(--amber); padding: 12px 0 12px 50px;">
+        <div style="font-size: 60px; line-height: 1.12; font-weight: 600; letter-spacing: -0.015em; color: var(--text); text-wrap: pretty;">
+          Agentic AI is still <span class="amber">engineering</span>.<br/><br/>
+          It just has <span class="amber">different seams</span>.
+        </div>
+      </div>
+
+      <!-- RIGHT: links + speaker -->
+      <div style="display: flex; flex-direction: column; gap: 28px;">
+        <div>
+          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 22px;">Resources</div>
+          <div style="display: flex; flex-direction: column; gap: 18px; font-family: var(--font-mono); font-size: 24px;">
+            <div style="padding: 18px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);">
+              <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em;">SUPERBRAIN · REPO</div>
+              <div style="margin-top: 4px;">github.com/amar-chheda/SuperBrain</div>
+            </div>
+            <div style="padding: 18px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);">
+              <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em;">NVIDIA · SLM PAPER</div>
+              <div style="margin-top: 4px;">arxiv.org/pdf/2506.02153</div>
+            </div>
+            <div style="padding: 18px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);">
+              <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em;">INFOWORLD · SLM ARCHITECTURE</div>
+              <div style="margin-top: 4px;">infoworld.com/article/4160404</div>
+            </div>
+            <div style="padding: 18px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);">
+              <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em;">LOCAL RUNTIME</div>
+              <div style="margin-top: 4px;">ollama.ai</div>
+            </div>
+          </div>
+        </div>
+        <div style="border-top: 1px solid var(--border); padding-top: 22px; display: flex; justify-content: space-between; align-items: baseline;">
+          <div>
+            <div class="amber" style="font-size: 30px; font-weight: 600;">Amar Chheda</div>
+            <div class="muted" style="font-size: 24px;">Machine Learning Engineer</div>
+          </div>
+          <div class="mono muted" style="font-size: 24px;">thank you.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>31 / Closing</span></div>
+  </div>
+</section>
+<!--SLIDES-->
+</deck-stage>
+
+<script src="deck-stage.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="tweaks.jsx"></script>
+
+</body>
+</html>
