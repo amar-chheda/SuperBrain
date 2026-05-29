@@ -20,6 +20,7 @@ from superbrain.app.application.metrics import InMemoryMetricsRecorder
 from superbrain.app.application.scheduler.adapter import SchedulerAdapter
 from superbrain.app.bot.telegram import router as bot_router
 from superbrain.app.infrastructure.chunkers.factory import ChunkerFactory
+from superbrain.app.infrastructure.tunnel import ngrok as ngrok_tunnel
 from superbrain.app.infrastructure.crawlers.factory import get_crawler
 from superbrain.app.infrastructure.db.engine import dispose_engine, get_session_factory, init_engine
 from superbrain.app.infrastructure.db.repositories.article_repo import SqlAlchemyArticleRepository
@@ -105,6 +106,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     scheduler.start()
     app.state.scheduler = scheduler
 
+    await ngrok_tunnel.start(settings)
+
     log.info(
         "superbrain.startup",
         database_url=settings.database_url.split("@")[-1],
@@ -115,6 +118,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     app.state.scheduler.stop()
+    ngrok_tunnel.stop()
     await http_client.aclose()
     await dispose_engine()
     log.info("superbrain.shutdown")

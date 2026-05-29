@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # Telegram
     telegram_bot_token: str | None = None
     telegram_webhook_url: str | None = None
+    ngrok_authtoken: str | None = None
 
     # API (used by CLI)
     api_base_url: str = "http://localhost:8000"

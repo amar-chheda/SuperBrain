@@ -23,6 +23,7 @@ dependencies = [
     "tiktoken>=0.7",
     "pgvector>=0.3",
     "apscheduler>=3.10",
+    "pyngrok>=8.1.2",
 ]
 
 [dependency-groups]
