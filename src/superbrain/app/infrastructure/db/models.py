@@ -101,6 +101,8 @@ class ModelCallLogModel(Base):
     related_entity_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), nullable=True
     )
+    prompt_input: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -225,6 +227,7 @@ class QueryLogModel(Base):
     answer_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     aborted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     abort_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retrieval_trace: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

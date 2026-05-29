@@ -66,6 +66,7 @@ class QueryLog:
     aborted: bool
     abort_reason: str | None
     created_at: datetime
+    retrieval_trace: dict | None = None
 
 
 @dataclass
@@ -143,3 +144,5 @@ class ModelCallLog:
     retries: int
     error_metadata: dict | None
     related_entity_id: UUID | None
+    prompt_input: str | None = None
+    response_output: str | None = None

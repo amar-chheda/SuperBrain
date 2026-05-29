@@ -93,6 +93,8 @@ class OllamaLLM(LLMPort):
                     status="success",
                     retries=retries,
                     related_entity_id=related_entity_id,
+                    prompt_input=prompt,
+                    response_output=text,
                 )
                 return text
 
@@ -113,6 +115,7 @@ class OllamaLLM(LLMPort):
             retries=retries,
             related_entity_id=related_entity_id,
             error_metadata={"error": last_error},
+            prompt_input=prompt,
         )
         raise LLMError(model, last_error)
 
@@ -127,6 +130,8 @@ class OllamaLLM(LLMPort):
         retries: int,
         related_entity_id: UUID | None,
         error_metadata: dict | None = None,
+        prompt_input: str | None = None,
+        response_output: str | None = None,
     ) -> None:
         """Persist a ModelCallLog entry for this LLM call.
 
@@ -159,6 +164,8 @@ class OllamaLLM(LLMPort):
                     retries=retries,
                     error_metadata=error_metadata,
                     related_entity_id=related_entity_id,
+                    prompt_input=prompt_input,
+                    response_output=response_output,
                 ))
         except Exception as exc:
             log.warning("llm.log_call_failed", error=str(exc))

@@ -29,6 +29,8 @@ class SqlAlchemyModelCallLogRepository(ModelCallLogRepository):
                 retries=log.retries,
                 error_metadata=log.error_metadata,
                 related_entity_id=log.related_entity_id,
+                prompt_input=log.prompt_input,
+                response_output=log.response_output,
             )
         )
         await self._session.commit()
@@ -73,4 +75,6 @@ def _to_entity(m: ModelCallLogModel) -> ModelCallLog:
         retries=m.retries,
         error_metadata=m.error_metadata,
         related_entity_id=m.related_entity_id,
+        prompt_input=m.prompt_input,
+        response_output=m.response_output,
     )

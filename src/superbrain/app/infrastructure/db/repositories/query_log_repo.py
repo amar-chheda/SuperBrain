@@ -23,6 +23,7 @@ class SqlAlchemyQueryLogRepository(QueryLogRepository):
                 answer_latency_ms=log.answer_latency_ms,
                 aborted=log.aborted,
                 abort_reason=log.abort_reason,
+                retrieval_trace=log.retrieval_trace,
                 created_at=log.created_at,
             )
         )
@@ -48,5 +49,6 @@ def _to_entity(m: QueryLogModel) -> QueryLog:
         answer_latency_ms=m.answer_latency_ms or 0,
         aborted=m.aborted,
         abort_reason=m.abort_reason,
+        retrieval_trace=m.retrieval_trace,
         created_at=m.created_at,
     )
