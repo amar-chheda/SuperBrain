@@ -12,17 +12,26 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 
 from superbrain.app.application.ingestion.use_case import IngestArticleUseCase
+from superbrain.app.application.qa.use_case import AskQuestionUseCase
+from superbrain.app.application.retrieval.bm25_retriever import BM25Retriever
+from superbrain.app.application.retrieval.vector_retriever import VectorRetriever
 from superbrain.app.application.topics.use_cases import ClassifyArticleUseCase
 from superbrain.app.domain.entities import IngestionJob
-from superbrain.app.infrastructure.db.engine import get_session
+from superbrain.app.infrastructure.db.engine import get_session, get_session_factory
 from superbrain.app.infrastructure.db.repositories.article_repo import (
     SqlAlchemyArticleRepository,
 )
 from superbrain.app.infrastructure.db.repositories.chunk_repo import (
     SqlAlchemyChunkRepository,
 )
+from superbrain.app.infrastructure.db.repositories.chunk_retrieval_repo import (
+    ChunkRetrievalRepository,
+)
 from superbrain.app.infrastructure.db.repositories.ingestion_job import (
     SqlAlchemyIngestionJobRepository,
+)
+from superbrain.app.infrastructure.db.repositories.query_log_repo import (
+    SqlAlchemyQueryLogRepository,
 )
 from superbrain.app.infrastructure.db.repositories.topic_repo import (
     SqlAlchemyArticleTopicMatchRepository,
@@ -76,6 +85,55 @@ async def _telegram_ingest_background(
         except Exception as exc:
             log.exception("bot.ingest_failed", job_id=str(job_id), error=str(exc))
             reply = f"Ingestion failed: {exc}"
+
+    await _send_reply(token, chat_id, reply)
+
+
+async def _telegram_qa_background(
+    question: str,
+    chat_id: int,
+    token: str,
+    request: Request,
+) -> None:
+    """Run the QA pipeline and send the answer back to the user."""
+    settings = get_settings()
+    session_factory = get_session_factory()
+    try:
+        async with session_factory() as session:
+            use_case = AskQuestionUseCase(
+                vector_retriever=VectorRetriever(
+                    embedder=request.app.state.embedder,
+                    chunk_repo=ChunkRetrievalRepository(session),
+                ),
+                bm25_retriever=BM25Retriever(
+                    chunk_repo=ChunkRetrievalRepository(session),
+                ),
+                llm=request.app.state.llm,
+                query_log_repo=SqlAlchemyQueryLogRepository(session),
+                metrics=request.app.state.metrics,
+                settings=settings,
+            )
+            result = await use_case.execute(question)
+
+        if result.aborted:
+            async with session_factory() as topic_session:
+                topic_repo = SqlAlchemyTopicRepository(topic_session)
+                topics = await topic_repo.list_active()
+            if topics:
+                topic_list = "\n".join(f"• {t.name}" for t in topics)
+                reply = f"I don't have enough information on that topic. Here's what I can talk about:\n\n{topic_list}"
+            else:
+                reply = "I don't have enough information on that topic in my knowledge base."
+        else:
+            reply = result.answer or "No answer generated."
+            if result.citations:
+                ref_lines = "\n".join(
+                    f"[{c.number}] {c.article_url}" for c in result.citations
+                )
+                reply += f"\n\n{ref_lines}"
+    except Exception as exc:
+        log.exception("bot.qa_failed", error=str(exc))
+        reply = f"QA failed: {exc}"
 
     await _send_reply(token, chat_id, reply)
 
@@ -141,7 +199,18 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks) 
             reply = "Something went wrong — please try again."
 
     elif text.startswith("/ask"):
-        reply = "QA is not yet available."
+        question = text[len("/ask"):].strip()
+        if not question:
+            reply = "Usage: /ask <your question>"
+        else:
+            background_tasks.add_task(
+                _telegram_qa_background,
+                question,
+                chat_id,
+                settings.telegram_bot_token,
+                request,
+            )
+            reply = f'Thinking about "{question}"...'
 
     else:
         reply = "Send me an https URL to ingest."
