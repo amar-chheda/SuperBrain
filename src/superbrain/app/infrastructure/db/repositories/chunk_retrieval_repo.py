@@ -36,7 +36,7 @@ class ChunkRetrievalRepository:
         """Return top_k chunks ranked by cosine similarity to the query embedding."""
         vector_literal = "[" + ",".join(str(v) for v in embedding) + "]"
         sql = text(
-            """
+            f"""
             SELECT
                 c.id,
                 c.article_id,
@@ -45,18 +45,16 @@ class ChunkRetrievalRepository:
                 a.title,
                 a.url,
                 a.published_at,
-                1 - (c.embedding <=> :embedding::vector) AS similarity_score
+                1 - (c.embedding <=> '{vector_literal}'::vector) AS similarity_score
             FROM chunks c
             JOIN articles a ON a.id = c.article_id
             WHERE a.status = 'succeeded'
               AND c.embedding IS NOT NULL
-            ORDER BY c.embedding <=> :embedding::vector
+            ORDER BY c.embedding <=> '{vector_literal}'::vector
             LIMIT :top_k
             """
         )
-        result = await self._session.execute(
-            sql, {"embedding": vector_literal, "top_k": top_k}
-        )
+        result = await self._session.execute(sql, {"top_k": top_k})
         rows = result.fetchall()
         return [_row_to_ranked_chunk(row) for row in rows]
 

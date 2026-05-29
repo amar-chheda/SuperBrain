@@ -23,6 +23,7 @@ class AskRequest(BaseModel):
 
 
 class CitationResponse(BaseModel):
+    number: int
     chunk_id: str
     article_title: str | None
     article_url: str
@@ -78,6 +79,7 @@ async def ask(body: AskRequest, request: Request) -> AskResponse:
 
 def _citation_response(c: Citation) -> CitationResponse:
     return CitationResponse(
+        number=c.number,
         chunk_id=str(c.chunk_id),
         article_title=c.article_title,
         article_url=c.article_url,
