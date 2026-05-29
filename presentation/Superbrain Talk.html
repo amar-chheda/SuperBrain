@@ -81,7 +81,17 @@ deck-stage section { background: var(--bg); color: var(--text); font-family: var
 .tabular { font-variant-numeric: tabular-nums; }
 
 .title-row { display: flex; flex-direction: column; gap: 24px; margin-bottom: var(--gap-title); }
-.body-grow { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; }
+.body-grow { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-start; }
+
+/* Cohesion helpers — shared "cloud vs SLM" vocabulary used across Acts 4 & 5 */
+.col-head { font-family: var(--font-mono); font-size: 22px; letter-spacing: 0.18em; text-transform: uppercase; padding-bottom: 14px; margin-bottom: 4px; }
+.col-head.cloud { color: var(--muted); border-bottom: 1px solid var(--border); }
+.col-head.slm { color: var(--amber); border-bottom: 1px solid var(--amber-dim); }
+.col-head.broke { color: var(--bad); border-bottom: 1px solid rgba(194,107,91,0.4); }
+.src { font-family: var(--font-mono); font-size: 21px; color: var(--muted); }
+.src.teal { color: var(--teal); }
+/* Last-resort guard: a slide body can never force the frame taller than the stage */
+.frame > .body-grow { overflow: hidden; }
 
 /* Footer slide-number + name (the deck-stage adds its own number; we use this for speaker line) */
 .footer {
@@ -393,6 +403,67 @@ when evidence is missing.
     <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>03 / The shift</span></div>
   </div>
 </section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 04b · TWO PARADIGMS (the hinge)                         -->
+<!-- ============================================================ -->
+<section data-label="04b Two paradigms side by side">
+  <div class="frame">
+    <div class="title-row" style="margin-bottom: 40px;">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 1 &#8594; Act 2 · The paradigm shift</span></div>
+      <h2 class="h-title">Classical ML and the agentic LLM paradigm are <span class="amber">different jobs</span>.</h2>
+    </div>
+
+    <div class="body-grow" style="justify-content: center;">
+      <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; max-width: 1680px; margin: 0 auto; width: 100%;">
+        <!-- Header -->
+        <div style="display: grid; grid-template-columns: 1.05fr 1.25fr 1.35fr; padding: 20px 40px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 22px; letter-spacing: 0.12em; text-transform: uppercase;">
+          <div class="muted">Dimension</div>
+          <div class="muted">Classical ML</div>
+          <div class="amber">Agentic + LLM</div>
+        </div>
+        <!-- Rows -->
+        <div style="display: grid; grid-template-columns: 1.05fr 1.25fr 1.35fr; padding: 19px 40px; border-bottom: 1px solid var(--border); align-items: baseline; font-size: 26px;">
+          <div class="mono muted" style="font-size: 22px; letter-spacing: 0.06em;">UNIT OF WORK</div>
+          <div>One model, one narrow task</div>
+          <div class="amber">A workflow of model calls + tools</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.05fr 1.25fr 1.35fr; padding: 19px 40px; border-bottom: 1px solid var(--border); align-items: baseline; font-size: 26px;">
+          <div class="mono muted" style="font-size: 22px; letter-spacing: 0.06em;">WHAT YOU BUILD</div>
+          <div>Features, loss, architecture</div>
+          <div class="amber">Prompts, retrieval, orchestration, guardrails</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.05fr 1.25fr 1.35fr; padding: 19px 40px; border-bottom: 1px solid var(--border); align-items: baseline; font-size: 26px;">
+          <div class="mono muted" style="font-size: 22px; letter-spacing: 0.06em;">WHO DECIDES "GOOD"</div>
+          <div>You — the metric is the truth</div>
+          <div class="amber">The model decides — then you verify</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.05fr 1.25fr 1.35fr; padding: 19px 40px; border-bottom: 1px solid var(--border); align-items: baseline; font-size: 26px;">
+          <div class="mono muted" style="font-size: 22px; letter-spacing: 0.06em;">HOW IT FAILS</div>
+          <div>A wrong number — low F1</div>
+          <div class="amber">Confident nonsense — hallucination</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.05fr 1.25fr 1.35fr; padding: 19px 40px; border-bottom: 1px solid var(--border); align-items: baseline; font-size: 26px;">
+          <div class="mono muted" style="font-size: 22px; letter-spacing: 0.06em;">HOW YOU EVALUATE</div>
+          <div>Holdout set · F1 / AUC</div>
+          <div class="amber">End-to-end behaviour in a system</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.05fr 1.25fr 1.35fr; padding: 19px 40px; align-items: baseline; font-size: 26px;">
+          <div class="mono muted" style="font-size: 22px; letter-spacing: 0.06em;">WHERE ACCURACY LIVES</div>
+          <div>In the weights</div>
+          <div class="amber">In the system around the model</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 34px; text-align: center; font-size: 30px; color: var(--muted); max-width: 1500px; margin-left: auto; margin-right: auto;">
+        Same engineer. New seams. <span class="text">The accuracy I used to own in the weights now lives in the system I build around the model.</span>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>04 / The shift</span></div>
+  </div>
+</section>
+
 <!-- ============================================================ -->
 <!-- ACT 2 — THE PARADIGM SHIFT                                    -->
 <!-- ============================================================ -->
@@ -455,7 +526,7 @@ when evidence is missing.
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>04 / The shift</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>05 / The shift</span></div>
   </div>
 </section>
 
@@ -493,7 +564,76 @@ when evidence is missing.
 
     <div style="margin-top: 40px; text-align: center; font-size: 32px; color: var(--muted);">The model is general. <span class="text">The system must be specific.</span></div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>05 / The shift</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>06 / The shift</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 06b · INSIDE THE BOX — transformer-explainer walkthrough -->
+<!-- ============================================================ -->
+<section data-label="06b Inside the box">
+  <div class="frame">
+    <div class="title-row" style="margin-bottom: 38px;">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 2 · The paradigm shift</span></div>
+      <h2 class="h-title">Before we shrink it — <span class="amber">what's actually happening inside</span>.</h2>
+    </div>
+
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 64px; align-items: center;">
+      <!-- LEFT: the pipeline, one token at a time -->
+      <div style="display: flex; flex-direction: column; gap: 12px; font-family: var(--font-mono);">
+        <div style="display: flex; align-items: baseline; gap: 20px;">
+          <span class="mono amber" style="font-size: 24px; font-weight: 600; min-width: 34px;">1</span>
+          <div><span style="font-size: 27px; color: var(--text);">Tokenize</span> <span class="muted" style="font-size: 24px;">— text &#8594; sub-word tokens, each an integer ID</span></div>
+        </div>
+        <div class="muted" style="padding-left: 14px; font-size: 22px;">&#8595;</div>
+        <div style="display: flex; align-items: baseline; gap: 20px;">
+          <span class="mono amber" style="font-size: 24px; font-weight: 600; min-width: 34px;">2</span>
+          <div><span style="font-size: 27px; color: var(--text);">Embed</span> <span class="muted" style="font-size: 24px;">— token vector (768-d) + positional encoding</span></div>
+        </div>
+        <div class="muted" style="padding-left: 14px; font-size: 22px;">&#8595;</div>
+        <div style="display: flex; align-items: baseline; gap: 20px;">
+          <span class="mono teal" style="font-size: 24px; font-weight: 600; min-width: 34px;">3</span>
+          <div><span class="teal" style="font-size: 27px;">Attention &#215;12</span> <span class="muted" style="font-size: 24px;">— every token looks at every other (multi-head)</span></div>
+        </div>
+        <div class="muted" style="padding-left: 14px; font-size: 22px;">&#8595;</div>
+        <div style="display: flex; align-items: baseline; gap: 20px;">
+          <span class="mono teal" style="font-size: 24px; font-weight: 600; min-width: 34px;">4</span>
+          <div><span class="teal" style="font-size: 27px;">MLP</span> <span class="muted" style="font-size: 24px;">— per-token feed-forward, 768 &#8594; 3072 &#8594; 768</span></div>
+        </div>
+        <div class="muted" style="padding-left: 14px; font-size: 22px;">&#8595;</div>
+        <div style="display: flex; align-items: baseline; gap: 20px;">
+          <span class="mono amber" style="font-size: 24px; font-weight: 600; min-width: 34px;">5</span>
+          <div><span style="font-size: 27px; color: var(--text);">Logits</span> <span class="muted" style="font-size: 24px;">— project to a score for all 50,257 vocab tokens</span></div>
+        </div>
+        <div class="muted" style="padding-left: 14px; font-size: 22px;">&#8595;</div>
+        <div style="display: flex; align-items: baseline; gap: 20px;">
+          <span class="mono amber" style="font-size: 24px; font-weight: 600; min-width: 34px;">6</span>
+          <div><span class="amber" style="font-size: 27px;">Softmax &#8594; sample</span> <span class="muted" style="font-size: 24px;">— probabilities, then temperature / top-k / top-p</span></div>
+        </div>
+        <div class="mono muted" style="margin-top: 14px; font-size: 23px; letter-spacing: 0.04em;">/* repeat for the next token. that's the whole machine. */</div>
+      </div>
+
+      <!-- RIGHT: open the live tool -->
+      <div style="display: flex; flex-direction: column; gap: 26px;">
+        <a href="https://poloclub.github.io/transformer-explainer/" target="_blank" rel="noopener"
+           style="display: block; text-decoration: none; background: rgba(232,177,76,0.10); border: 1px solid var(--amber-dim); border-radius: 16px; padding: 30px 34px;">
+          <div class="mono amber" style="font-size: 22px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 14px;">&#9658; Open live in the browser</div>
+          <div class="mono" style="font-size: 25px; color: var(--text); white-space: nowrap;">poloclub.github.io/<span class="amber">transformer-explainer</span></div>
+          <div class="muted" style="font-size: 23px; margin-top: 14px; font-family: var(--font-sans);">GPT-2 small &middot; 124M params &middot; runs entirely in-browser on ONNX</div>
+        </a>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="h-body" style="font-size: 26px;"><span class="teal mono">&#9656;</span> Type a prompt — watch each stage update live.</div>
+          <div class="h-body" style="font-size: 26px;"><span class="teal mono">&#9656;</span> Hover a token — see the attention map light up.</div>
+          <div class="h-body" style="font-size: 26px;"><span class="teal mono">&#9656;</span> Drag temperature — watch the next-token odds shift.</div>
+        </div>
+        <div class="callout">
+          <span class="label">Why this matters</span>
+          <span style="font-size: 27px;">phi3:mini and llama3.1:8b are <span class="amber">this same machine</span> — just trained differently and scaled down to run on my laptop.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>07 / The shift</span></div>
   </div>
 </section>
 
@@ -502,49 +642,120 @@ when evidence is missing.
 <!-- ============================================================ -->
 <section data-label="07 How small language models get made">
   <div class="frame">
-    <div class="title-row">
+    <div class="title-row" style="margin-bottom: 38px;">
       <div class="eyebrow"><span class="dot"></span><span class="act">Act 2 · The paradigm shift</span></div>
-      <h2 class="h-title">How small language models get made.</h2>
+      <h2 class="h-title">How small language models <em class="amber">actually</em> get made.</h2>
     </div>
 
-    <div class="body-grow" style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 60px; align-items: center;">
-      <!-- LEFT: funnel diagram -->
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; font-family: var(--font-mono);">
-        <div style="width: 720px; padding: 16px 26px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); text-align: center; font-size: 28px;">LLM <span class="muted" style="font-size: 24px;">· 70B+ parameters</span></div>
-        <div class="muted" style="font-size: 24px; line-height: 1;">↓</div>
-        <div style="width: 620px; padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 14px; background: rgba(91,194,168,0.06); text-align: center; font-size: 26px; color: var(--teal);">knowledge distillation</div>
-        <div class="muted" style="font-size: 24px; line-height: 1;">↓</div>
-        <div style="width: 540px; padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 14px; background: rgba(91,194,168,0.06); text-align: center; font-size: 26px; color: var(--teal);">pruning</div>
-        <div class="muted" style="font-size: 24px; line-height: 1;">↓</div>
-        <div style="width: 460px; padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 14px; background: rgba(91,194,168,0.06); text-align: center; font-size: 26px; color: var(--teal);">quantization</div>
-        <div class="muted" style="font-size: 24px; line-height: 1;">↓</div>
-        <div style="width: 380px; padding: 14px 22px; border: 1px solid var(--teal-dim); border-radius: 14px; background: rgba(91,194,168,0.06); text-align: center; font-size: 26px; color: var(--teal);">LoRA adapters</div>
-        <div class="muted" style="font-size: 24px; line-height: 1;">↓</div>
-        <div style="width: 320px; padding: 16px 26px; border: 1px solid var(--amber-dim); border-radius: 14px; background: rgba(232,177,76,0.12); text-align: center; font-size: 28px; color: var(--amber);">SLM <span class="muted" style="font-size: 24px;">· 1–8B</span></div>
+    <div class="body-grow" style="justify-content: center; gap: 26px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1680px; margin: 0 auto; width: 100%;">
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px 34px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: baseline; gap: 18px;"><span class="mono amber" style="font-size: 24px; font-weight: 600;">01</span><div class="mono amber" style="font-size: 24px; letter-spacing: 0.14em;">DATA QUALITY, NOT SIZE</div></div>
+          <div class="h-body" style="font-size: 26px;">Phi-3 was trained "data-optimal" — heavily filtered web + synthetic textbook data. Microsoft even dropped trivia like sports scores to spend capacity on reasoning.</div>
+          <div class="src">&#8599; Phi-3 Technical Report &middot; arXiv:2404.14219, 2024</div>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px 34px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: baseline; gap: 18px;"><span class="mono amber" style="font-size: 24px; font-weight: 600;">02</span><div class="mono amber" style="font-size: 24px; letter-spacing: 0.14em;">TOKENS &#8811; PARAMETERS</div></div>
+          <div class="h-body" style="font-size: 26px;">Llama 3.1 8B saw <span class="amber">~15 trillion tokens</span>. The model is small; the training set is enormous. You push data, not parameter count.</div>
+          <div class="src">&#8599; Llama 3.1 model card &middot; Meta, 2024</div>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px 34px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: baseline; gap: 18px;"><span class="mono amber" style="font-size: 24px; font-weight: 600;">03</span><div class="mono amber" style="font-size: 24px; letter-spacing: 0.14em;">POST-TRAINING IS THE BEHAVIOUR</div></div>
+          <div class="h-body" style="font-size: 26px;">Instruction-following comes from <span class="teal">SFT + DPO</span> — preference data, reward models, rejection sampling — layered onto the base model.</div>
+          <div class="src">&#8599; Phi-3 &amp; Llama 3.1 post-training, 2024</div>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px 34px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: baseline; gap: 18px;"><span class="mono amber" style="font-size: 24px; font-weight: 600;">04</span><div class="mono amber" style="font-size: 24px; letter-spacing: 0.14em;">QUANTIZE TO FIT THE LAPTOP</div></div>
+          <div class="h-body" style="font-size: 26px;">4-bit <span class="teal mono" style="font-size: 24px;">Q4_K_M</span> GGUF shrinks 8B weights to <span class="amber">~5&nbsp;GB</span> with little quality loss. That's what Ollama serves by default.</div>
+          <div class="src">&#8599; Ollama model library, 2024&#8211;25</div>
+        </div>
       </div>
 
-      <!-- RIGHT: explanation -->
-      <div style="display: flex; flex-direction: column; gap: 32px;">
-        <div>
-          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 10px;">PRE-TRAINING</div>
-          <div class="h-body" style="font-size: 28px;">Same recipe as an LLM — just a smaller corpus, fewer parameters.</div>
-        </div>
-        <div>
-          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 10px;">DISTILLATION</div>
-          <div class="h-body" style="font-size: 28px;">A large teacher transfers <em>reasoning</em>, not just outputs, to a small student.</div>
-        </div>
-        <div>
-          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 10px;">PRUNING + QUANTIZATION</div>
-          <div class="h-body" style="font-size: 28px;">Strip weights. Lower precision. Same task, less silicon.</div>
-        </div>
-        <div>
-          <div class="mono amber" style="font-size: 24px; letter-spacing: 0.16em; margin-bottom: 10px;">LoRA</div>
-          <div class="h-body" style="font-size: 28px;">Inject task-specific adapters without retraining from scratch.</div>
-        </div>
+      <div class="callout" style="max-width: 1680px; margin: 4px auto 0;">
+        <span class="label">The myth, corrected</span>
+        <span style="font-size: 27px;">Distillation, pruning, and LoRA exist — but phi3:mini and llama3.1:8b <span class="amber">weren't made that way</span>. The real levers were better data and post-training.</span>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>06 / The shift</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>08 / The shift</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 07b · THE THREE MODELS — grounded origins               -->
+<!-- ============================================================ -->
+<section data-label="07b Three models three origins">
+  <div class="frame">
+    <div class="title-row" style="margin-bottom: 38px;">
+      <div class="eyebrow"><span class="dot"></span><span class="act">Act 2 · The paradigm shift</span></div>
+      <h2 class="h-title">The three models in Superbrain — <span class="amber">three different origins</span>.</h2>
+    </div>
+
+    <div class="body-grow" style="justify-content: center;">
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; max-width: 1700px; margin: 0 auto; width: 100%;">
+        <!-- phi3:mini -->
+        <div style="background: var(--surface); border: 1px solid var(--teal-dim); border-radius: 16px; padding: 32px 32px; display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between;">
+            <div class="mono teal" style="font-size: 30px; font-weight: 600;">phi3:mini</div>
+            <span class="tag teal">3.8B</span>
+          </div>
+          <div class="mono muted" style="font-size: 22px; letter-spacing: 0.1em;">MICROSOFT &middot; 2024</div>
+          <div style="height: 1px; background: var(--teal-dim); opacity: 0.5;"></div>
+          <div style="display: flex; flex-direction: column; gap: 12px; font-size: 24px; line-height: 1.35;">
+            <div><span class="teal mono">&#9656;</span> 3.3T tokens, "data-optimal" filtered web + synthetic</div>
+            <div><span class="teal mono">&#9656;</span> SFT + DPO post-training, heavy safety red-teaming</div>
+            <div><span class="teal mono">&#9656;</span> 69% MMLU — rivals GPT-3.5 at phone size</div>
+          </div>
+          <div style="margin-top: auto; padding-top: 14px;">
+            <div class="mono amber" style="font-size: 21px; letter-spacing: 0.1em;">SUPERBRAIN ROLE</div>
+            <div style="font-size: 24px; margin-top: 4px;">Classification — <span class="amber">4&#215; faster</span> than the 8B</div>
+            <div class="src" style="font-size: 20px; margin-top: 10px;">arXiv:2404.14219</div>
+          </div>
+        </div>
+
+        <!-- llama3.1:8b -->
+        <div style="background: rgba(232,177,76,0.06); border: 1px solid var(--amber-dim); border-radius: 16px; padding: 32px 32px; display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between;">
+            <div class="mono amber" style="font-size: 30px; font-weight: 600;">llama3.1:8b</div>
+            <span class="tag amber">8B</span>
+          </div>
+          <div class="mono muted" style="font-size: 22px; letter-spacing: 0.1em;">META &middot; 2024</div>
+          <div style="height: 1px; background: var(--amber-dim); opacity: 0.5;"></div>
+          <div style="display: flex; flex-direction: column; gap: 12px; font-size: 24px; line-height: 1.35;">
+            <div><span class="amber mono">&#9656;</span> ~15T tokens, dense decoder-only, 128K context</div>
+            <div><span class="amber mono">&#9656;</span> Trained on 16,000+ H100 GPUs</div>
+            <div><span class="amber mono">&#9656;</span> SFT + DPO with synthetic data &amp; reward models</div>
+          </div>
+          <div style="margin-top: auto; padding-top: 14px;">
+            <div class="mono amber" style="font-size: 21px; letter-spacing: 0.1em;">SUPERBRAIN ROLE</div>
+            <div style="font-size: 24px; margin-top: 4px;">Chunking &middot; QA &middot; digest <span class="muted">(4-bit local)</span></div>
+            <div class="src" style="font-size: 20px; margin-top: 10px;">Meta Llama 3.1, 2024</div>
+          </div>
+        </div>
+
+        <!-- nomic-embed-text -->
+        <div style="background: var(--surface); border: 1px solid var(--teal-dim); border-radius: 16px; padding: 32px 32px; display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between;">
+            <div class="mono teal" style="font-size: 28px; font-weight: 600;">nomic-embed</div>
+            <span class="tag teal">137M</span>
+          </div>
+          <div class="mono muted" style="font-size: 22px; letter-spacing: 0.1em;">NOMIC AI &middot; 2024</div>
+          <div style="height: 1px; background: var(--teal-dim); opacity: 0.5;"></div>
+          <div style="display: flex; flex-direction: column; gap: 12px; font-size: 24px; line-height: 1.35;">
+            <div><span class="teal mono">&#9656;</span> Long-context BERT &#8594; contrastive &#8594; supervised FT</div>
+            <div><span class="teal mono">&#9656;</span> 8192 context, 768-d vectors, fully open data</div>
+            <div><span class="teal mono">&#9656;</span> Beats OpenAI ada-002 &amp; text-embedding-3-small</div>
+          </div>
+          <div style="margin-top: auto; padding-top: 14px;">
+            <div class="mono amber" style="font-size: 21px; letter-spacing: 0.1em;">SUPERBRAIN ROLE</div>
+            <div style="font-size: 24px; margin-top: 4px;">Semantic embeddings for retrieval</div>
+            <div class="src" style="font-size: 20px; margin-top: 10px;">arXiv:2402.01613</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>09 / The shift</span></div>
   </div>
 </section>
 
@@ -592,7 +803,7 @@ when evidence is missing.
 
     <div style="margin-top: 44px; text-align: center; font-size: 32px;">Use <span class="amber" style="font-weight: 600;">both</span>. Route tasks to the right model.</div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>07 / The shift</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>10 / The shift</span></div>
   </div>
 </section>
 
@@ -646,7 +857,7 @@ when evidence is missing.
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>08 / The shift</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>11 / The shift</span></div>
   </div>
 </section>
 <!-- ACT 3 — WHY SMALL LANGUAGE MODELS -->
@@ -681,7 +892,7 @@ when evidence is missing.
         </div>
       </div>
     </div>
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>09 / Why SLMs</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>12 / Why SLMs</span></div>
   </div>
 </section>
 
@@ -689,44 +900,56 @@ when evidence is missing.
   <div class="frame">
     <div class="title-row">
       <div class="eyebrow"><span class="dot"></span><span class="act">Act 3 · Why small language models?</span></div>
-      <h2 class="h-title">What running LLMs <em class="amber">actually</em> costs.</h2>
+      <h2 class="h-title">What this has <em class="amber">actually</em> cost me.</h2>
     </div>
-    <div class="body-grow" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 70px; align-items: center;">
+    <div class="body-grow" style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 64px; align-items: center;">
+      <!-- LEFT: the real ledger from the database -->
       <div>
-        <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 28px;">Monthly cost · 1,000 articles/day ingestion</div>
-        <div style="display: flex; flex-direction: column; gap: 30px;">
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
-              <span class="mono" style="font-size: 26px;">GPT-4o · cloud</span>
-              <span class="mono amber tabular" style="font-size: 36px; font-weight: 600;">$7,500+</span>
-            </div>
-            <div style="height: 28px; background: var(--surface); border-radius: 6px; overflow: hidden;"><div style="height: 100%; width: 100%; background: var(--amber);"></div></div>
+        <div class="mono muted" style="font-size: 22px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 20px;">Processed so far · 33 articles · 676 chunks · live DB</div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;">
+          <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; padding: 14px 26px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase;">
+            <div>Model · job</div><div style="text-align:right;">Input</div><div style="text-align:right;">Output</div>
           </div>
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
-              <span class="mono" style="font-size: 26px;">llama3.1:8b · local</span>
-              <span class="mono teal tabular" style="font-size: 36px; font-weight: 600;">~$12</span>
-            </div>
-            <div style="height: 28px; background: var(--surface); border-radius: 6px; overflow: hidden;"><div style="height: 100%; width: 1.5%; background: var(--teal);"></div></div>
-            <div class="muted mono" style="font-size: 24px; margin-top: 8px;">electricity only · amortise the hardware</div>
+          <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; padding: 15px 26px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 23px; align-items: baseline;">
+            <div class="teal">phi3:mini <span class="muted" style="font-size:20px;">classify</span></div><div class="tabular" style="text-align:right;">366,881</div><div class="tabular muted" style="text-align:right;">26,040</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; padding: 15px 26px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 23px; align-items: baseline;">
+            <div class="amber">llama3.1:8b <span class="muted" style="font-size:20px;">QA·digest</span></div><div class="tabular" style="text-align:right;">26,523</div><div class="tabular muted" style="text-align:right;">1,107</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; padding: 15px 26px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 23px; align-items: baseline;">
+            <div class="teal">nomic-embed <span class="muted" style="font-size:20px;">embed</span></div><div class="tabular" style="text-align:right;">257,814</div><div class="tabular muted" style="text-align:right;">&mdash;</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; padding: 16px 26px; background: rgba(232,177,76,0.06); font-family: var(--font-mono); font-size: 24px; align-items: baseline;">
+            <div class="amber" style="font-weight:600;">TOTAL</div><div class="amber tabular" style="text-align:right; font-weight:600;">651,218</div><div class="amber tabular" style="text-align:right; font-weight:600;">27,147</div>
           </div>
         </div>
-        <div class="mono muted" style="font-size: 24px; margin-top: 28px;">assumes 1,500 input tokens × 1,000 articles/day = 1.5B tokens/month</div>
+        <div class="mono muted" style="font-size: 22px; margin-top: 16px;">678,365 tokens, counted with tiktoken straight from Postgres.</div>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 32px;">
-        <div>
-          <div class="mono muted" style="font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 14px;">At enterprise scale</div>
-          <div class="h-sub" style="font-size: 38px; line-height: 1.2;"><span class="amber tabular">$500K–$2M/yr</span> for serious cloud LLM workloads.</div>
-          <div class="h-small" style="margin-top: 14px;">Plus rate limits, plus residency, plus compliance.</div>
-          <div class="mono muted" style="font-size: 24px; margin-top: 6px;">Gartner, 2024</div>
+
+      <!-- RIGHT: the bill, two ways to pay -->
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        <div style="background: rgba(232,177,76,0.06); border: 1px solid var(--amber-dim); border-radius: 14px; padding: 24px 30px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <span class="mono" style="font-size: 24px;">Claude Sonnet 4.5 <span class="muted" style="font-size:20px;">· cloud</span></span>
+            <span class="mono amber tabular" style="font-size: 46px; font-weight: 700;">$2.36</span>
+          </div>
+          <div class="mono muted" style="font-size: 21px; margin-top: 8px;">651,218 in &#215; $3/M  +  27,147 out &#215; $15/M</div>
         </div>
+        <div style="background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 14px; padding: 24px 30px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <span class="mono" style="font-size: 24px;">Ollama, local <span class="muted" style="font-size:20px;">· my laptop</span></span>
+            <span class="mono teal tabular" style="font-size: 46px; font-weight: 700;">$0.00</span>
+          </div>
+          <div class="mono muted" style="font-size: 21px; margin-top: 8px;">electricity only &middot; no per-token meter</div>
+        </div>
+        <div class="src">&#8599; Claude Sonnet 4.5 API pricing &middot; anthropic.com, 2025</div>
         <div class="callout">
-          <span class="label">Punchline</span>
-          <span style="font-size: 32px;">Running llama3.1:8b locally costs me <span class="teal">electricity</span>. That's it.</span>
+          <span class="label">The honest point</span>
+          <span style="font-size: 26px;">$2.36 is nothing. But it's <span class="teal">zero</span> on my hardware, it <span class="amber">stays zero as I scale</span>, and not one token left the machine.</span>
         </div>
       </div>
     </div>
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>10 / Why SLMs</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>13 / Why SLMs</span></div>
   </div>
 </section>
 <section data-label="12 NVIDIA case for small agentic models">
@@ -793,7 +1016,7 @@ when evidence is missing.
         </div>
       </div>
     </div>
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>11 / Why SLMs</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>14 / Why SLMs</span></div>
   </div>
 </section>
 
@@ -850,7 +1073,7 @@ when evidence is missing.
         </div>
       </div>
     </div>
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>12 / Why SLMs</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>15 / Why SLMs</span></div>
   </div>
 </section>
 <section data-label="14 SLMs and LLMs orchestrated">
@@ -890,7 +1113,7 @@ when evidence is missing.
         </div>
       </div>
     </div>
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>13 / Why SLMs</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>16 / Why SLMs</span></div>
   </div>
 </section>
 
@@ -932,7 +1155,7 @@ when evidence is missing.
         </div>
       </div>
     </div>
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>14 / Why SLMs</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>17 / Why SLMs</span></div>
   </div>
 </section>
 
@@ -989,7 +1212,7 @@ when evidence is missing.
         <div class="mono muted" style="font-size: 24px;">InfoWorld, 2024 — "Rethinking enterprise AI architecture"</div>
       </div>
     </div>
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>15 / Why SLMs</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>18 / Why SLMs</span></div>
   </div>
 </section>
 <!-- ACT 4 — WHAT I BUILT: SUPERBRAIN -->
@@ -1006,11 +1229,11 @@ when evidence is missing.
       <div style="display: flex; flex-direction: column; gap: 20px;">
         <div class="mono muted" style="font-size: 22px; letter-spacing: 0.18em; text-transform: uppercase; padding-bottom: 14px; border-bottom: 1px solid var(--border);">&#9729; Cloud RAG stack — managed</div>
         <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 22px;">
-          <div style="padding: 12px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted);">OpenAI Assistants API · ingest + embed</div>
+          <div style="padding: 12px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted);">Managed ingest + embeddings API</div>
           <div style="color: var(--dim); padding-left: 10px;">↓</div>
           <div style="padding: 12px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted);">Pinecone / Weaviate · managed vector DB</div>
           <div style="color: var(--dim); padding-left: 10px;">↓</div>
-          <div style="padding: 12px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted);">GPT-4o · retrieve + generate</div>
+          <div style="padding: 12px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted);">Claude Sonnet 4.5 · retrieve + generate</div>
           <div style="color: var(--dim); padding-left: 10px;">↓</div>
           <div style="padding: 12px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted);">Vendor dashboard · metrics</div>
         </div>
@@ -1040,7 +1263,7 @@ when evidence is missing.
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>16 / Superbrain</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>19 / Superbrain</span></div>
   </div>
 </section>
 
@@ -1055,13 +1278,13 @@ when evidence is missing.
       <!-- LEFT: Cloud -->
       <div style="display: flex; flex-direction: column; gap: 22px;">
         <div class="mono muted" style="font-size: 22px; letter-spacing: 0.18em; text-transform: uppercase; padding-bottom: 14px; border-bottom: 1px solid var(--border);">&#9729; Cloud API — what you get free</div>
-        <div class="h-body" style="font-size: 26px; color: var(--muted);">One API endpoint. GPT-4o handles chunking decisions, classification, QA, and digest summaries. No model routing needed. No latency tradeoffs to manage per task.</div>
+        <div class="h-body" style="font-size: 26px; color: var(--muted);">One API endpoint. Claude Sonnet 4.5 handles chunking decisions, classification, QA, and digest summaries. No model routing needed. No latency tradeoffs to manage per task.</div>
         <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 26px; font-family: var(--font-mono); font-size: 22px; color: var(--dim);">
-          <div style="color: var(--muted);">model = "gpt-4o"</div>
-          <div style="margin-top: 8px;">chunking → gpt-4o</div>
-          <div>classify → gpt-4o</div>
-          <div>qa → gpt-4o</div>
-          <div>digest → gpt-4o</div>
+          <div style="color: var(--muted);">model = "claude-sonnet-4-5"</div>
+          <div style="margin-top: 8px;">chunking → sonnet-4.5</div>
+          <div>classify → sonnet-4.5</div>
+          <div>qa → sonnet-4.5</div>
+          <div>digest → sonnet-4.5</div>
           <div style="color: var(--dim); margin-top: 8px;"># one model, every task</div>
         </div>
       </div>
@@ -1097,7 +1320,7 @@ when evidence is missing.
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>17 / Superbrain</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>20 / Superbrain</span></div>
   </div>
 </section>
 
@@ -1147,47 +1370,47 @@ Article (first 2000 chars): ..."""</span>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>18 / Superbrain</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>21 / Superbrain</span></div>
   </div>
 </section>
 
 <section data-label="20 Classification by integer index">
   <div class="frame">
-    <div class="title-row">
+    <div class="title-row" style="margin-bottom: 32px;">
       <div class="eyebrow"><span class="dot"></span><span class="act">Act 4 · What I built — Superbrain</span></div>
-      <h2 class="h-title">Classification by <span class="amber">integer index</span> — hallucination prevention by design.</h2>
+      <h2 class="h-title" style="font-size: 56px;">Classification by <span class="amber">integer index</span> — hallucination prevention by design.</h2>
     </div>
 
-    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 70px; align-items: start;">
+    <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 34px 64px; align-items: start;">
       <!-- LEFT: Cloud -->
-      <div style="display: flex; flex-direction: column; gap: 22px;">
-        <div class="mono muted" style="font-size: 22px; letter-spacing: 0.18em; text-transform: uppercase; padding-bottom: 14px; border-bottom: 1px solid var(--border);">&#9729; Cloud API — what you get free</div>
-        <div class="h-body" style="font-size: 26px; color: var(--muted);">OpenAI Structured Outputs enforce schema at the API level. Enum values are valid by construction. No markdown fences, no wrong shapes, no coercion needed.</div>
-        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 26px; font-family: var(--font-mono); font-size: 22px; color: var(--dim);">
+      <div style="display: flex; flex-direction: column; gap: 18px;">
+        <div class="col-head cloud">&#9729; Cloud API — what you get free</div>
+        <div class="h-body" style="font-size: 25px; color: var(--muted);">OpenAI Structured Outputs enforce schema at the API level. Enum values are valid by construction. No markdown fences, no wrong shapes, no coercion needed.</div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; font-family: var(--font-mono); font-size: 22px; color: var(--dim);">
           <div style="color: var(--muted); margin-bottom: 8px;">response_format=TopicMatch</div>
           <div><span class="c"># Pydantic schema enforced</span></div>
           <div><span class="c"># confidence always valid enum</span></div>
           <div><span class="c"># no parsing surprises</span></div>
         </div>
-        <div class="muted" style="font-size: 21px; font-family: var(--font-mono);">&#8599; Structured Outputs — developers.openai.com, 2024</div>
+        <div class="src">&#8599; Structured Outputs — developers.openai.com, 2024</div>
       </div>
 
       <!-- RIGHT: SLM -->
-      <div style="display: flex; flex-direction: column; gap: 22px;">
-        <div class="mono amber" style="font-size: 22px; letter-spacing: 0.18em; text-transform: uppercase; padding-bottom: 14px; border-bottom: 1px solid var(--amber-dim);">&#9889; SLM · Superbrain — what we built</div>
-        <div class="h-body" style="font-size: 26px;">Pass topics as <span class="amber">integers</span>, not UUID strings. The model can't invent an ID that wasn't in the prompt. Invalid integers are silently dropped by the parser.</div>
-        <div style="font-family: var(--font-mono); font-size: 22px; display: flex; flex-direction: column; gap: 12px;">
-          <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; line-height: 1.7;">
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="col-head slm">&#9889; SLM · Superbrain — what we built</div>
+        <div class="h-body" style="font-size: 25px;">Pass topics as <span class="amber">integers</span>, not UUID strings. The model can't invent an ID that wasn't in the prompt. Invalid integers are silently dropped by the parser.</div>
+        <div style="font-family: var(--font-mono); font-size: 22px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; line-height: 1.5;">
             <div><span class="amber">[1]</span> AI &amp; Machine Learning</div>
             <div><span class="amber">[2]</span> DeepSeek R1</div>
             <div><span class="amber">[3]</span> Small Language Models</div>
           </div>
           <div style="color: var(--muted); text-align: center; font-size: 20px;">↓ phi3:mini ↓</div>
-          <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px;">
+          <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px;">
             [{"topic_id": <span class="teal">1</span>}, {"topic_id": <span class="bad">99</span>}]
           </div>
           <div style="color: var(--muted); text-align: center; font-size: 20px;">↓ parser ↓</div>
-          <div style="background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 10px; padding: 16px 20px;">
+          <div style="background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 10px; padding: 12px 18px;">
             <div><span class="teal">1</span> → ML <span class="teal">✓ kept</span></div>
             <div><span class="bad">99</span> → no match <span class="bad">✗ dropped silently</span></div>
           </div>
@@ -1195,14 +1418,14 @@ Article (first 2000 chars): ..."""</span>
       </div>
 
       <div style="grid-column: 1 / -1;">
-        <div class="callout">
+        <div class="callout" style="padding: 20px 32px;">
           <span class="label">The principle</span>
-          <span style="font-size: 26px;">Structure the prompt so hallucination is <span class="amber">physically impossible</span>, not just statistically unlikely. Without structured output APIs, you engineer the constraint yourself.</span>
+          <span style="font-size: 25px;">Structure the prompt so hallucination is <span class="amber">physically impossible</span>, not just statistically unlikely. Without structured output APIs, you engineer the constraint yourself.</span>
         </div>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>19 / Superbrain</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>22 / Superbrain</span></div>
   </div>
 </section>
 
@@ -1258,7 +1481,7 @@ Article (first 2000 chars): ..."""</span>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>20 / Superbrain</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>23 / Superbrain</span></div>
   </div>
 </section>
 
@@ -1324,7 +1547,7 @@ Article (first 2000 chars): ..."""</span>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>21 / Superbrain</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>24 / Superbrain</span></div>
   </div>
 </section>
 
@@ -1377,11 +1600,11 @@ Article (first 2000 chars): ..."""</span>
       <!-- LEFT: Cloud -->
       <div style="display: flex; flex-direction: column; gap: 22px;">
         <div class="mono muted" style="font-size: 22px; letter-spacing: 0.18em; text-transform: uppercase; padding-bottom: 14px; border-bottom: 1px solid var(--border);">&#9729; Cloud API — what you get free</div>
-        <div class="h-body" style="font-size: 26px; color: var(--muted);">Model availability is invisible. Swap one string. New model, same call. If GPT-4o isn't ready, you use GPT-4o-mini. No Ollama build to wait for. No compatibility to verify.</div>
+        <div class="h-body" style="font-size: 26px; color: var(--muted);">Model availability is invisible. Swap one string. New model, same call. If Claude Sonnet 4.5 isn't ready, you use Claude Haiku. No Ollama build to wait for. No compatibility to verify.</div>
         <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 26px; font-family: var(--font-mono); font-size: 22px; color: var(--dim);">
           <div><span class="c"># swap a string, done</span></div>
           <div style="color: var(--muted); margin-top: 8px;">model = <span class="bad">"lfm2-7b"</span></div>
-          <div style="color: var(--teal);">model = <span class="s">"gpt-4o-mini"</span></div>
+          <div style="color: var(--teal);">model = <span class="s">"claude-haiku-4-5"</span></div>
           <div style="color: var(--dim); margin-top: 8px;"># always available, always stable</div>
         </div>
       </div>
@@ -1478,7 +1701,7 @@ Article (first 2000 chars): ..."""</span>
         <div class="h-body" style="font-size: 26px; color: var(--muted);">Stateless HTTP calls. No connection lifecycle. No session to manage. A cloud LLM call is just a POST request — it's complete when the response arrives. No async context managers to reason about.</div>
         <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 26px; font-family: var(--font-mono); font-size: 22px; color: var(--dim);">
           <div><span class="c"># at 7am UTC, APScheduler fires</span></div>
-          <div style="color: var(--teal); margin-top: 8px;">resp = await openai.chat(...)</div>
+          <div style="color: var(--teal); margin-top: 8px;">resp = await anthropic.messages(...)</div>
           <div style="color: var(--dim); margin-top: 6px;"># always works</div>
           <div style="color: var(--dim);"># no lifecycle to manage</div>
         </div>
@@ -1609,7 +1832,7 @@ Article (first 2000 chars): ..."""</span>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>22 / Lessons</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>25 / Lessons</span></div>
   </div>
 </section>
 
@@ -1655,7 +1878,7 @@ Return [] if no match."""</span></pre>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>23 / Lessons</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>26 / Lessons</span></div>
   </div>
 </section>
 
@@ -1700,7 +1923,7 @@ Return [] if no match."""</span></pre>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>24 / Lessons</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>27 / Lessons</span></div>
   </div>
 </section>
 
@@ -1717,7 +1940,7 @@ Return [] if no match."""</span></pre>
         <div class="mono muted" style="font-size: 22px; letter-spacing: 0.18em; text-transform: uppercase; padding-bottom: 14px; border-bottom: 1px solid var(--border);">&#9729; Cloud API — what you get free</div>
         <div class="h-body" style="font-size: 26px; color: var(--muted);">Vendor dashboard: token usage, cost, p50/p95 latency, error rate by model. Aggregates are automatic. But the vendor sees your model calls — not your pipeline.</div>
         <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 26px; font-family: var(--font-mono); font-size: 22px; color: var(--dim);">
-          <div style="color: var(--muted); margin-bottom: 10px;">platform.openai.com/usage</div>
+          <div style="color: var(--muted); margin-bottom: 10px;">console.anthropic.com/usage</div>
           <div>tokens_used: 4.2M</div>
           <div>cost_this_month: $312</div>
           <div>avg_latency: 1.4s</div>
@@ -1746,7 +1969,7 @@ Return [] if no match."""</span></pre>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>25 / Lessons</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>28 / Lessons</span></div>
   </div>
 </section>
 
@@ -1792,7 +2015,7 @@ Return [] if no match."""</span></pre>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>26 / Lessons</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>29 / Lessons</span></div>
   </div>
 </section>
 
@@ -1836,7 +2059,7 @@ Return [] if no match."""</span></pre>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>27 / Lessons</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>30 / Lessons</span></div>
   </div>
 </section>
 
@@ -1880,7 +2103,7 @@ Return [] if no match."""</span></pre>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>28 / Lessons</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>31 / Lessons</span></div>
   </div>
 </section>
 
@@ -1962,7 +2185,7 @@ Return [] if no match."""</span></pre>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>28 / Takeaways</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>32 / Takeaways</span></div>
   </div>
 </section>
 
@@ -2019,7 +2242,7 @@ Return [] if no match."""</span></pre>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>29 / Takeaways</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>33 / Takeaways</span></div>
   </div>
 </section>
 
@@ -2054,7 +2277,7 @@ Return [] if no match."""</span></pre>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>30 / Takeaways</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>34 / Takeaways</span></div>
   </div>
 </section>
 
@@ -2107,7 +2330,7 @@ Return [] if no match."""</span></pre>
       </div>
     </div>
 
-    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>31 / Closing</span></div>
+    <div class="footer"><span class="crumb">Superbrain · A. Chheda</span><span>35 / Closing</span></div>
   </div>
 </section>
 <!--SLIDES-->
