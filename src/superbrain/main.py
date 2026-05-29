@@ -31,6 +31,8 @@ from superbrain.app.infrastructure.db.repositories.topic_repo import (
 )
 from superbrain.app.infrastructure.embeddings.ollama_embedder import OllamaEmbedder
 from superbrain.app.infrastructure.llm.ollama_llm import OllamaLLM
+from superbrain.app.infrastructure.llm.prioritized import PrioritizedLLM
+from superbrain.app.infrastructure.llm.priority_queue import LLMPriorityQueue
 from superbrain.logging_config import configure_logging
 from superbrain.middleware import RequestIDMiddleware
 from superbrain.settings import get_settings
@@ -73,7 +75,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     app.state.http_client = http_client
     app.state.crawler = get_crawler(settings, http_client)
-    app.state.llm = OllamaLLM(settings=settings, http_client=http_client)
+
+    _base_llm = OllamaLLM(settings=settings, http_client=http_client)
+    _llm_queue = LLMPriorityQueue()
+    _llm_queue.start()
+    app.state.llm_queue = _llm_queue
+    app.state.llm = PrioritizedLLM(_base_llm, _llm_queue, priority=1)            # QA — highest
+    app.state.llm_ingestion = PrioritizedLLM(_base_llm, _llm_queue, priority=2)  # article ingestion
+    app.state.llm_background = PrioritizedLLM(_base_llm, _llm_queue, priority=3) # classification / digest
+
     app.state.embedder = OllamaEmbedder(settings=settings, http_client=http_client)
     app.state.chunker_factory = ChunkerFactory()
     app.state.metrics = InMemoryMetricsRecorder()
@@ -82,7 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.classification_enabled = True
 
     # run_digest builds a fresh session per run — matches the API background task pattern.
-    _llm = app.state.llm
+    _llm = app.state.llm_background
     _metrics = app.state.metrics
     _settings = settings
 
@@ -118,6 +128,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     app.state.scheduler.stop()
+    app.state.llm_queue.stop()
     ngrok_tunnel.stop()
     await http_client.aclose()
     await dispose_engine()
