@@ -152,7 +152,7 @@ async def _reclassify_background(topic_id: UUID, request: Request) -> None:
             article_repo=SqlAlchemyArticleRepository(session),
             topic_repo=SqlAlchemyTopicRepository(session),
             match_repo=SqlAlchemyArticleTopicMatchRepository(session),
-            llm=request.app.state.llm,
+            llm=request.app.state.llm_background,
             settings=settings,
         )
         await use_case.execute(topic_id)
@@ -375,7 +375,7 @@ async def classify_article(
         article_repo=SqlAlchemyArticleRepository(session),
         topic_repo=SqlAlchemyTopicRepository(session),
         match_repo=SqlAlchemyArticleTopicMatchRepository(session),
-        llm=request.app.state.llm,
+        llm=request.app.state.llm_background,
         metrics=request.app.state.metrics,
         settings=settings,
     )

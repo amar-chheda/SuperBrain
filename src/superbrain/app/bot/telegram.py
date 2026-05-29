@@ -63,7 +63,7 @@ async def _telegram_ingest_background(
                 article_repo=SqlAlchemyArticleRepository(session),
                 topic_repo=SqlAlchemyTopicRepository(session),
                 match_repo=SqlAlchemyArticleTopicMatchRepository(session),
-                llm=request.app.state.llm,
+                llm=request.app.state.llm_background,
                 metrics=request.app.state.metrics,
                 settings=settings,
             )
@@ -73,7 +73,7 @@ async def _telegram_ingest_background(
             ingestion_job_repo=SqlAlchemyIngestionJobRepository(session),
             crawler=request.app.state.crawler,
             embedder=request.app.state.embedder,
-            llm=request.app.state.llm,
+            llm=request.app.state.llm_ingestion,
             chunker_factory=request.app.state.chunker_factory,
             metrics=request.app.state.metrics,
             settings=settings,

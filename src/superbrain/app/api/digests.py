@@ -81,7 +81,7 @@ async def _run_digest_background(target_date: DateType | None, request: Request)
             match_repo=SqlAlchemyArticleTopicMatchRepository(session),
             topic_repo=SqlAlchemyTopicRepository(session),
             digest_repo=SqlAlchemyDigestRepository(session),
-            llm=request.app.state.llm,
+            llm=request.app.state.llm_background,
             metrics=request.app.state.metrics,
             settings=settings,
         )
