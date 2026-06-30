@@ -34,11 +34,11 @@ class QAEvalCase:
 async def run_retrieval_eval(
     case: RetrievalEvalCase,
     vector_retriever: object,
-    bm25_retriever: object,
+    chunk_repo: object,
 ) -> EvalResult:
     t0 = time.monotonic()
     vector_chunks: list[RankedChunk] = await vector_retriever.retrieve(case.question, top_k=case.top_k)  # type: ignore[attr-defined]
-    bm25_chunks: list[RankedChunk] = await bm25_retriever.retrieve(case.question, top_k=case.top_k)  # type: ignore[attr-defined]
+    bm25_chunks: list[RankedChunk] = await chunk_repo.find_by_text(case.question, top_k=case.top_k)  # type: ignore[attr-defined]
     fused = reciprocal_rank_fusion(vector_chunks, bm25_chunks, top_n=case.top_k)
     duration_ms = int((time.monotonic() - t0) * 1000)
 
@@ -111,12 +111,12 @@ async def run_all_evals(
     retrieval_cases: list[RetrievalEvalCase],
     qa_cases: list[QAEvalCase],
     vector_retriever: object,
-    bm25_retriever: object,
+    chunk_repo: object,
     qa_use_case: object,
 ) -> list[EvalResult]:
     results = []
     for case in retrieval_cases:
-        results.append(await run_retrieval_eval(case, vector_retriever, bm25_retriever))
+        results.append(await run_retrieval_eval(case, vector_retriever, chunk_repo))
     for case in qa_cases:
         results.append(await run_qa_eval(case, qa_use_case))
     return results

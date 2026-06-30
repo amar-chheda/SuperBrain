@@ -7,7 +7,6 @@ from superbrain.app.infrastructure.db.repositories.chunk_retrieval_repo import R
 
 MIN_EVIDENCE_CHUNKS = 2
 MIN_EVIDENCE_SCORE = 0.005
-MIN_VECTOR_SIMILARITY = 0.6
 
 
 @dataclass
