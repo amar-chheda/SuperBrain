@@ -4,9 +4,11 @@ from fastapi import APIRouter, Request, status
 from pydantic import BaseModel
 
 from superbrain.app.application.qa.use_case import AskQuestionUseCase, Citation
-from superbrain.app.application.retrieval.bm25_retriever import BM25Retriever
 from superbrain.app.application.retrieval.vector_retriever import VectorRetriever
 from superbrain.app.infrastructure.db.engine import get_session_factory
+from superbrain.app.infrastructure.db.repositories.article_repo import (
+    SqlAlchemyArticleRepository,
+)
 from superbrain.app.infrastructure.db.repositories.chunk_retrieval_repo import (
     ChunkRetrievalRepository,
 )
@@ -34,6 +36,7 @@ class AskResponse(BaseModel):
     answer: str | None
     aborted: bool
     abort_reason: str | None = None
+    abort_kind: str | None = None
     citations: list[CitationResponse]
     retrieval_latency_ms: int = 0
     answer_latency_ms: int = 0
@@ -58,11 +61,12 @@ async def ask(body: AskRequest, request: Request) -> AskResponse:
                 embedder=request.app.state.embedder,
                 chunk_repo=chunk_repo,
             ),
-            bm25_retriever=BM25Retriever(chunk_repo=chunk_repo),
             llm=request.app.state.llm,
             query_log_repo=query_log_repo,
             metrics=request.app.state.metrics,
             settings=settings,
+            article_repo=SqlAlchemyArticleRepository(session),
+            chunk_repo=chunk_repo,
         )
 
         result = await use_case.execute(body.question)
@@ -71,6 +75,7 @@ async def ask(body: AskRequest, request: Request) -> AskResponse:
         answer=result.answer,
         aborted=result.aborted,
         abort_reason=result.abort_reason,
+        abort_kind=result.abort_kind,
         citations=[_citation_response(c) for c in result.citations],
         retrieval_latency_ms=result.retrieval_latency_ms,
         answer_latency_ms=result.answer_latency_ms,

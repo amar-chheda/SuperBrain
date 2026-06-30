@@ -8,7 +8,6 @@ from fastapi.responses import JSONResponse
 from superbrain.app.application.evals.fixtures.qa_cases import QA_CASES
 from superbrain.app.application.evals.fixtures.retrieval_cases import RETRIEVAL_CASES
 from superbrain.app.application.evals.harness import run_all_evals
-from superbrain.app.application.retrieval.bm25_retriever import BM25Retriever
 from superbrain.app.application.retrieval.vector_retriever import VectorRetriever
 from superbrain.app.application.qa.use_case import AskQuestionUseCase
 from superbrain.app.infrastructure.db.engine import get_session_factory
@@ -175,21 +174,21 @@ async def run_evals(request: Request) -> list[dict]:
             embedder=request.app.state.embedder,
             chunk_repo=chunk_repo,
         )
-        bm25_retriever = BM25Retriever(chunk_repo=chunk_repo)
         qa_use_case = AskQuestionUseCase(
             vector_retriever=vector_retriever,
-            bm25_retriever=bm25_retriever,
             llm=request.app.state.llm,
             query_log_repo=query_log_repo,
             metrics=request.app.state.metrics,
             settings=settings,
+            article_repo=SqlAlchemyArticleRepository(session),
+            chunk_repo=chunk_repo,
         )
 
         results = await run_all_evals(
             retrieval_cases=RETRIEVAL_CASES,
             qa_cases=QA_CASES,
             vector_retriever=vector_retriever,
-            bm25_retriever=bm25_retriever,
+            chunk_repo=chunk_repo,
             qa_use_case=qa_use_case,
         )
 

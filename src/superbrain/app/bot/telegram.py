@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 
 from superbrain.app.application.ingestion.use_case import IngestArticleUseCase
 from superbrain.app.application.qa.use_case import AskQuestionUseCase
-from superbrain.app.application.retrieval.bm25_retriever import BM25Retriever
 from superbrain.app.application.retrieval.vector_retriever import VectorRetriever
 from superbrain.app.application.topics.use_cases import ClassifyArticleUseCase
 from superbrain.app.domain.entities import IngestionJob
@@ -100,22 +99,25 @@ async def _telegram_qa_background(
     session_factory = get_session_factory()
     try:
         async with session_factory() as session:
+            chunk_repo = ChunkRetrievalRepository(session)
             use_case = AskQuestionUseCase(
                 vector_retriever=VectorRetriever(
                     embedder=request.app.state.embedder,
-                    chunk_repo=ChunkRetrievalRepository(session),
-                ),
-                bm25_retriever=BM25Retriever(
-                    chunk_repo=ChunkRetrievalRepository(session),
+                    chunk_repo=chunk_repo,
                 ),
                 llm=request.app.state.llm,
                 query_log_repo=SqlAlchemyQueryLogRepository(session),
                 metrics=request.app.state.metrics,
                 settings=settings,
+                article_repo=SqlAlchemyArticleRepository(session),
+                chunk_repo=chunk_repo,
             )
             result = await use_case.execute(question)
 
-        if result.aborted:
+        if result.aborted and result.abort_kind == "url_not_ingested":
+            # The bot ingests a bare URL, so point the user straight at that path.
+            reply = result.abort_reason or "I haven't ingested that article yet."
+        elif result.aborted:
             async with session_factory() as topic_session:
                 topic_repo = SqlAlchemyTopicRepository(topic_session)
                 topics = await topic_repo.list_active()

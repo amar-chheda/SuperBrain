@@ -57,6 +57,17 @@ class ArticleRepository(ABC):
         """
 
     @abstractmethod
+    async def find_by_canonical_url(self, canonical_url: str) -> Article | None:
+        """Find an article by its canonical URL.
+
+        Args:
+            canonical_url: The canonicalised URL to look up.
+
+        Returns:
+            The most recently ingested matching article, or None.
+        """
+
+    @abstractmethod
     async def update_status(
         self,
         article_id: UUID,

@@ -74,6 +74,24 @@ class SqlAlchemyArticleRepository(ArticleRepository):
         model = result.scalar_one_or_none()
         return self._to_entity(model) if model else None
 
+    async def find_by_canonical_url(self, canonical_url: str) -> Article | None:
+        """Find an article by its canonical URL (most recent if duplicated).
+
+        Args:
+            canonical_url: The canonicalised URL to look up.
+
+        Returns:
+            The most recently ingested matching article, or None if not found.
+        """
+        result = await self._session.execute(
+            select(ArticleModel)
+            .where(ArticleModel.canonical_url == canonical_url)
+            .order_by(ArticleModel.ingested_at.desc())
+            .limit(1)
+        )
+        model = result.scalars().first()
+        return self._to_entity(model) if model else None
+
     async def update_status(
         self,
         article_id: UUID,
