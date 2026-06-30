@@ -183,9 +183,10 @@ class IngestArticleUseCase:
             if not chunk_texts:
                 raise ValueError("Chunker returned no chunks")
 
-            # Step 9: Embed (single batch call)
+            # Step 9: Embed (single batch call) — stored corpus text uses the
+            # "document" task prefix so it shares nomic's space with query embeddings.
             embed_start = time.monotonic()
-            embeddings = await self._embedder.embed(chunk_texts)
+            embeddings = await self._embedder.embed(chunk_texts, input_type="document")
             embed_ms = int((time.monotonic() - embed_start) * 1000)
             self._metrics.observe("embedding_latency_ms", embed_ms)
 

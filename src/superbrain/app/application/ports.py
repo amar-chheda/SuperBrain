@@ -47,11 +47,20 @@ class EmbeddingPort(ABC):
     """Abstract interface for generating text embeddings."""
 
     @abstractmethod
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        texts: list[str],
+        *,
+        input_type: Literal["query", "document"] = "document",
+    ) -> list[list[float]]:
         """Generate embeddings for a list of texts.
 
         Args:
             texts: List of strings to embed. Must be non-empty.
+            input_type: Retrieval role of the texts. "query" for search queries,
+                "document" for stored corpus text. Models such as nomic-embed-text
+                require a matching task-instruction prefix per role, and query and
+                document embeddings must share the same prefixed space to compare.
 
         Returns:
             List of embedding vectors, one per input text.

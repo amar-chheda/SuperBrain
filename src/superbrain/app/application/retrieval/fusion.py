@@ -8,27 +8,24 @@ from superbrain.app.infrastructure.db.repositories.chunk_retrieval_repo import R
 
 
 def reciprocal_rank_fusion(
-    vector_results: list[RankedChunk],
-    bm25_results: list[RankedChunk],
+    *ranked_lists: list[RankedChunk],
     k: int = 60,
     top_n: int = 10,
 ) -> list[RankedChunk]:
-    """Fuse two ranked lists using Reciprocal Rank Fusion.
+    """Fuse any number of ranked lists using Reciprocal Rank Fusion.
 
-    A chunk appearing in both lists gets contributions from each, so it
-    naturally rises above chunks that only appear in one list.
+    Each list contributes 1/(k+rank) per chunk, so a chunk appearing in several
+    lists rises above one that appears in only one. Accepts two lists (vector +
+    BM25) or more — e.g. raw-query vector + HyDE vector + BM25 keywords.
     k=60 is the standard constant — higher values reduce the impact of top ranks.
     """
     scores: dict[UUID, float] = defaultdict(float)
     chunk_map: dict[UUID, RankedChunk] = {}
 
-    for rank, chunk in enumerate(vector_results, start=1):
-        scores[chunk.id] += 1.0 / (k + rank)
-        chunk_map[chunk.id] = chunk
-
-    for rank, chunk in enumerate(bm25_results, start=1):
-        scores[chunk.id] += 1.0 / (k + rank)
-        chunk_map[chunk.id] = chunk
+    for ranked in ranked_lists:
+        for rank, chunk in enumerate(ranked, start=1):
+            scores[chunk.id] += 1.0 / (k + rank)
+            chunk_map[chunk.id] = chunk
 
     sorted_ids = sorted(scores.keys(), key=lambda cid: scores[cid], reverse=True)
 

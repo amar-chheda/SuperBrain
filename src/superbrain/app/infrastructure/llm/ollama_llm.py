@@ -36,6 +36,7 @@ class OllamaLLM(LLMPort):
         """
         self._base_url = settings.ollama_base_url
         self._client = http_client
+        self._keep_alive = settings.ollama_keep_alive
 
     async def complete(
         self,
@@ -71,7 +72,14 @@ class OllamaLLM(LLMPort):
         retries = 0
         last_error: str = "unknown"
 
-        body: dict = {"model": model, "prompt": prompt, "stream": False}
+        # keep_alive pins the model in memory between calls so the QA hot path
+        # (lfm2 -> nomic -> llama) doesn't pay a reload on every first request.
+        body: dict = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "keep_alive": self._keep_alive,
+        }
         if json_mode:
             body["format"] = "json"
 
