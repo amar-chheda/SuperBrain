@@ -1,171 +1,334 @@
-"""Repository interfaces for domain persistence boundaries."""
+"""Abstract repository contracts for domain entities.
 
-from datetime import datetime
-from typing import Protocol
+Defines the interface the infrastructure layer must implement.
+No concrete implementations live here — only the contracts that
+decouple the application layer from database specifics.
+"""
+
+from abc import ABC, abstractmethod
+from datetime import date
+from typing import Literal
 from uuid import UUID
 
-from superbrain.app.domain.models import (
+from superbrain.app.domain.entities import (
     Article,
-    ArticleChunk,
-    Digest,
+    ArticleTopicMatch,
+    Chunk,
+    DigestItem,
+    DigestRun,
     IngestionJob,
-    IngestionStatus,
-    QueryLogEntry,
-    StoredChunk,
-    TopicDefinition,
-    TopicMatch,
-    TopicVersion,
+    ModelCallLog,
+    QueryLog,
+    Topic,
 )
 
 
-class ArticleRepository(Protocol):
-    """Persistence contract for article records."""
+class ArticleRepository(ABC):
+    """Contract for persisting and retrieving Article entities."""
 
-    def save(self, article: Article) -> Article:
-        """Persist and return an article."""
+    @abstractmethod
+    async def save(self, article: Article) -> None:
+        """Persist an article, inserting or updating as needed.
 
-    def save_chunks(self, chunks: list[ArticleChunk]) -> list[ArticleChunk]:
-        """Persist and return article chunks."""
+        Args:
+            article: The article to save.
+        """
 
-    def save_raw_snapshot(self, article_id: UUID, raw_html: str) -> None:
-        """Persist a raw snapshot for an article."""
+    @abstractmethod
+    async def find_by_hash(self, content_hash: str) -> Article | None:
+        """Find an article by its content hash for deduplication.
 
-    def get(self, article_id: UUID) -> Article | None:
-        """Fetch an article by ID."""
+        Args:
+            content_hash: SHA-256 hash of the article's raw text.
 
-    def list_articles(
+        Returns:
+            The matching article, or None if not found.
+        """
+
+    @abstractmethod
+    async def find_by_id(self, article_id: UUID) -> Article | None:
+        """Find an article by its primary key.
+
+        Args:
+            article_id: UUID of the article.
+
+        Returns:
+            The article, or None if not found.
+        """
+
+    @abstractmethod
+    async def find_by_canonical_url(self, canonical_url: str) -> Article | None:
+        """Find an article by its canonical URL.
+
+        Args:
+            canonical_url: The canonicalised URL to look up.
+
+        Returns:
+            The most recently ingested matching article, or None.
+        """
+
+    @abstractmethod
+    async def update_status(
         self,
-        limit: int = 100,
-        article_ids: list[UUID] | None = None,
-    ) -> list[Article]:
-        """List recent articles or scoped article IDs."""
+        article_id: UUID,
+        status: Literal["pending", "processing", "succeeded", "failed"],
+    ) -> None:
+        """Update an article's processing status.
 
-    def list_between(self, start: datetime, end: datetime) -> list[Article]:
-        """List articles whose created time falls within [start, end)."""
+        Args:
+            article_id: UUID of the article to update.
+            status: The new status value.
+        """
 
-    def get_by_source_url(self, source_url: str) -> Article | None:
-        """Fetch an article by source URL."""
+    @abstractmethod
+    async def list_all_active(self) -> list[Article]:
+        """List all articles with status='succeeded'.
 
-    def get_by_canonical_url(self, canonical_url: str) -> Article | None:
-        """Fetch an article by canonical URL."""
+        Returns:
+            All successfully ingested articles.
+        """
 
-    def get_by_content_hash(self, content_hash: str) -> Article | None:
-        """Fetch an article by content hash."""
+    @abstractmethod
+    async def list_by_date(self, target_date: date) -> list[Article]:
+        """List all articles ingested on a given date.
 
+        Args:
+            target_date: The date to filter by (uses ingested_at).
 
-class ArticleTopicMatchRepository(Protocol):
-    """Persistence contract for article-topic classification matches."""
-
-    def replace_for_article(self, article_id: UUID, matches: list[TopicMatch]) -> list[TopicMatch]:
-        """Replace existing matches for an article and return saved matches."""
-
-    def list_for_article(self, article_id: UUID) -> list[TopicMatch]:
-        """List saved matches for an article."""
-
-    def list_for_articles(self, article_ids: list[UUID]) -> list[TopicMatch]:
-        """List saved matches across multiple article IDs."""
-
-
-class RetrievalRepository(Protocol):
-    """Persistence contract for retrieval candidate sources."""
-
-    def list_chunks(self, limit: int = 1000) -> list[StoredChunk]:
-        """Return chunk records joined with article metadata."""
-
-    def lexical_scores(self, query: str, limit: int = 200) -> dict[str, float]:
-        """Return lexical relevance scores keyed by chunk ID."""
+        Returns:
+            List of articles ingested on that date, possibly empty.
+        """
 
 
-class TopicRepository(Protocol):
-    """Persistence contract for topic definitions and versions."""
+class ChunkRepository(ABC):
+    """Contract for persisting and retrieving Chunk entities."""
 
-    def create(self, topic: TopicDefinition, version: TopicVersion) -> TopicDefinition:
-        """Create a topic and its initial version."""
+    @abstractmethod
+    async def save_many(self, chunks: list[Chunk]) -> None:
+        """Persist a batch of chunks.
 
-    def update(self, topic: TopicDefinition, version: TopicVersion) -> TopicDefinition:
-        """Persist new current version for a topic."""
+        Args:
+            chunks: The chunks to save. Must all belong to the same article.
+        """
 
-    def set_inactive(self, topic_id: UUID) -> TopicDefinition:
-        """Mark topic as inactive and return updated record."""
+    @abstractmethod
+    async def find_by_article(self, article_id: UUID) -> list[Chunk]:
+        """Find all chunks belonging to an article.
 
-    def get(self, topic_id: UUID) -> TopicDefinition | None:
-        """Fetch topic by ID."""
+        Args:
+            article_id: UUID of the parent article.
 
-    def list_all(self, active_only: bool = False) -> list[TopicDefinition]:
-        """List topics, optionally filtering active only."""
-
-    def get_latest_version(self, topic_id: UUID) -> TopicVersion | None:
-        """Fetch latest version for a topic."""
-
-    def list_active_with_latest_versions(self) -> list[tuple[TopicDefinition, TopicVersion]]:
-        """List active topics paired with latest versions."""
+        Returns:
+            Ordered list of chunks for the article, possibly empty.
+        """
 
 
-class IngestionJobRepository(Protocol):
-    """Persistence contract for ingestion jobs."""
+class TopicRepository(ABC):
+    """Contract for persisting and retrieving Topic entities."""
 
-    def create(self, job: IngestionJob) -> IngestionJob:
-        """Persist and return an ingestion job."""
+    @abstractmethod
+    async def save(self, topic: Topic) -> None:
+        """Persist a topic, inserting or updating as needed.
 
-    def update_status(
+        Args:
+            topic: The topic to save.
+        """
+
+    @abstractmethod
+    async def list_active(self) -> list[Topic]:
+        """List all topics with status='active'.
+
+        Returns:
+            List of active topics ordered by priority descending.
+        """
+
+    @abstractmethod
+    async def list_all(self, include_archived: bool = False) -> list[Topic]:
+        """List all topics, optionally including archived ones.
+
+        Args:
+            include_archived: If True, include archived topics.
+
+        Returns:
+            Topics ordered by priority descending.
+        """
+
+    @abstractmethod
+    async def set_status(
+        self, topic_id: UUID, status: Literal["active", "archived"]
+    ) -> None:
+        """Set a topic's status.
+
+        Args:
+            topic_id: UUID of the topic to update.
+            status: New status value.
+        """
+
+    @abstractmethod
+    async def find_by_id(self, topic_id: UUID) -> Topic | None:
+        """Find a topic by its primary key.
+
+        Args:
+            topic_id: UUID of the topic.
+
+        Returns:
+            The topic, or None if not found.
+        """
+
+
+class ModelCallLogRepository(ABC):
+    """Contract for persisting model call audit logs."""
+
+    @abstractmethod
+    async def save(self, log: ModelCallLog) -> None:
+        """Persist a model call log entry.
+
+        Args:
+            log: The model call log to save.
+        """
+
+
+class QueryLogRepository(ABC):
+    """Contract for persisting QA query logs."""
+
+    @abstractmethod
+    async def save(self, log: QueryLog) -> None:
+        """Persist a query log entry.
+
+        Args:
+            log: The query log to save.
+        """
+
+
+class IngestionJobRepository(ABC):
+    """Contract for persisting and retrieving IngestionJob entities."""
+
+    @abstractmethod
+    async def save(self, job: IngestionJob) -> None:
+        """Persist a new ingestion job.
+
+        Args:
+            job: The job to save.
+        """
+
+    @abstractmethod
+    async def find_by_id(self, job_id: UUID) -> IngestionJob | None:
+        """Find a job by its primary key.
+
+        Args:
+            job_id: UUID of the job.
+
+        Returns:
+            The job, or None if not found.
+        """
+
+    @abstractmethod
+    async def update_status(
         self,
         job_id: UUID,
-        status: IngestionStatus,
-        *,
+        status: Literal["pending", "processing", "succeeded", "failed"],
         error_message: str | None = None,
-        article_id: UUID | None = None,
-    ) -> IngestionJob:
-        """Update status and optional metadata for an ingestion job."""
-
-    def get(self, job_id: UUID) -> IngestionJob | None:
-        """Fetch an ingestion job by ID."""
-
-    def list_failed(self, limit: int = 50) -> list[IngestionJob]:
-        """List failed ingestion jobs for retry workflows."""
-
-
-class QueryLogRepository(Protocol):
-    """Persistence contract for query logs."""
-
-    def record(self, entry: QueryLogEntry) -> None:
-        """Persist query execution metadata."""
-
-
-class ModelCallLogRepository(Protocol):
-    """Persistence contract for model and embedding call logs."""
-
-    def record(
-        self,
-        *,
-        provider: str,
-        model_name: str,
-        request_type: str,
-        prompt_template: str | None,
-        started_at: datetime,
-        finished_at: datetime,
-        duration_ms: float,
-        status: str,
-        retries: int,
-        error_metadata: str | None,
-        related_entity_id: str | None,
     ) -> None:
-        """Persist model-call execution details."""
+        """Update the status (and optionally error_message) of a job.
+
+        Args:
+            job_id: UUID of the job to update.
+            status: The new status value.
+            error_message: Optional error detail when status is 'failed'.
+        """
 
 
-class DigestRepository(Protocol):
-    """Persistence contract for digest runs."""
+class ArticleTopicMatchRepository(ABC):
+    """Contract for persisting and retrieving ArticleTopicMatch entities."""
 
-    def create_run(self, run_date: datetime) -> Digest:
-        """Create a running digest run for a target date."""
+    @abstractmethod
+    async def save_many(self, matches: list[ArticleTopicMatch]) -> None:
+        """Persist a batch of topic matches.
 
-    def complete_run(self, digest: Digest) -> Digest:
-        """Persist completed digest payload and return saved run."""
+        Args:
+            matches: The matches to save.
+        """
 
-    def fail_run(self, digest_id: UUID, error_message: str) -> Digest:
-        """Mark a digest run as failed and return resulting run."""
+    @abstractmethod
+    async def delete_by_article(self, article_id: UUID) -> None:
+        """Delete all matches for a given article (used before reclassification).
 
-    def get_latest(self) -> Digest | None:
-        """Return most recent digest run if present."""
+        Args:
+            article_id: UUID of the article whose matches should be deleted.
+        """
 
-    def list_recent(self, limit: int = 20) -> list[Digest]:
-        """List most recent digest runs."""
+    @abstractmethod
+    async def upsert_for_topic(
+        self,
+        article_id: UUID,
+        topic_id: UUID,
+        matches: list[ArticleTopicMatch],
+    ) -> None:
+        """Replace the match for a specific article-topic pair.
+
+        Args:
+            article_id: UUID of the article.
+            topic_id: UUID of the topic being reclassified.
+            matches: New matches (may be empty if article no longer matches).
+        """
+
+    @abstractmethod
+    async def find_by_article(self, article_id: UUID) -> list[ArticleTopicMatch]:
+        """Return all matches for a given article.
+
+        Args:
+            article_id: UUID of the article.
+
+        Returns:
+            All topic matches for the article, possibly empty.
+        """
+
+    @abstractmethod
+    async def list_by_article_ids(
+        self, article_ids: list[UUID]
+    ) -> list[ArticleTopicMatch]:
+        """Return all matches for a batch of article IDs.
+
+        Args:
+            article_ids: UUIDs of the articles to fetch matches for.
+
+        Returns:
+            All topic matches for the given articles, possibly empty.
+        """
+
+
+class DigestRepository(ABC):
+    """Contract for persisting and retrieving digest runs and items."""
+
+    @abstractmethod
+    async def save_run(self, run: DigestRun) -> None:
+        """Persist a new digest run record."""
+
+    @abstractmethod
+    async def update_run(
+        self,
+        run_id: UUID,
+        *,
+        status: str,
+        article_count: int = 0,
+        section_count: int = 0,
+        finished_at: object = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Update mutable fields of an existing digest run."""
+
+    @abstractmethod
+    async def save_items(self, items: list[DigestItem]) -> None:
+        """Persist a batch of digest items."""
+
+    @abstractmethod
+    async def list_runs(self, limit: int = 30) -> list[DigestRun]:
+        """Return the most recent digest runs, newest first."""
+
+    @abstractmethod
+    async def find_run_by_id(self, run_id: UUID) -> DigestRun | None:
+        """Return a digest run by ID, or None if not found."""
+
+    @abstractmethod
+    async def find_items_by_run(self, run_id: UUID) -> list[DigestItem]:
+        """Return all items for a given digest run, ordered by position."""

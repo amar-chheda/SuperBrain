@@ -1,0 +1,9 @@
+[
+  {"question": "simulated society", "expect": "answer"},
+  {"question": "research lead simulated society experiment", "expect": "answer"},
+  {"question": "small language models", "expect": "answer"},
+  {"question": "model context protocol", "expect": "answer"},
+  {"question": "how do I bake sourdough bread", "expect": "refuse"},
+  {"question": "best hiking trails in Patagonia", "expect": "refuse"},
+  {"question": "2024 Formula 1 championship standings", "expect": "refuse"}
+]

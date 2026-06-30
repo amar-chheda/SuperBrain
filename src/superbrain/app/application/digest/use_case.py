@@ -1,157 +1,142 @@
-"""Daily digest generation orchestration."""
+"""Daily digest generation use case — map-reduce over ingested articles."""
 
-import logging
-from collections import defaultdict
-from datetime import UTC, datetime, timedelta
-from uuid import UUID
+import dataclasses
+from datetime import date, datetime, timedelta, timezone
+from typing import Literal
+from uuid import uuid4
 
-from superbrain.app.application.digest.deduplication import DigestDeduper
-from superbrain.app.application.digest.generator import DigestGenerator
-from superbrain.app.application.digest.models import DigestSourceArticle
-from superbrain.app.application.ports import TelegramClient
-from superbrain.app.domain.models import Digest, DigestItem, DigestStatus, TopicMatch
+import structlog
+
+from superbrain.app.application.digest.deduplicator import deduplicate_sources_within_group
+from superbrain.app.application.digest.grouper import group_by_topic, join_matches
+from superbrain.app.application.digest.selector import select_articles_for_digest
+from superbrain.app.application.digest.summariser import summarise_topic_group
+from superbrain.app.application.metrics import MetricsRecorder
+from superbrain.app.application.ports import LLMPort
+from superbrain.app.domain.entities import DigestItem, DigestRun
 from superbrain.app.domain.repositories import (
     ArticleRepository,
     ArticleTopicMatchRepository,
     DigestRepository,
     TopicRepository,
 )
-from superbrain.app.observability.metrics import InMemoryMetricsRecorder, MetricsRecorder
-from superbrain.app.observability.tracing import TracingHook
+from superbrain.settings import Settings
 
-logger = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 
 class GenerateDailyDigestUseCase:
-    """Generate and optionally dispatch a daily digest."""
-
     def __init__(
         self,
-        article_repository: ArticleRepository,
-        topic_repository: TopicRepository,
-        match_repository: ArticleTopicMatchRepository,
-        digest_repository: DigestRepository,
-        deduper: DigestDeduper,
-        generator: DigestGenerator,
-        notifier: TelegramClient | None = None,
-        metrics: MetricsRecorder | None = None,
+        article_repo: ArticleRepository,
+        match_repo: ArticleTopicMatchRepository,
+        topic_repo: TopicRepository,
+        digest_repo: DigestRepository,
+        llm: LLMPort,
+        metrics: MetricsRecorder,
+        settings: Settings,
     ) -> None:
-        """Initialize digest workflow dependencies."""
+        self._article_repo = article_repo
+        self._match_repo = match_repo
+        self._topic_repo = topic_repo
+        self._digest_repo = digest_repo
+        self._llm = llm
+        self._metrics = metrics
+        self._settings = settings
 
-        self._article_repository = article_repository
-        self._topic_repository = topic_repository
-        self._match_repository = match_repository
-        self._digest_repository = digest_repository
-        self._deduper = deduper
-        self._generator = generator
-        self._notifier = notifier
-        self._metrics = metrics or InMemoryMetricsRecorder()
-        self._tracing = TracingHook("superbrain.digest")
-
-    def run(
+    async def execute(
         self,
-        *,
-        run_date: datetime | None = None,
-        notify_chat_id: str | None = None,
-    ) -> Digest:
-        """Execute digest generation for the previous UTC day by default."""
+        target_date: date | None = None,
+        triggered_by: Literal["scheduler", "manual", "api"] = "scheduler",
+    ) -> DigestRun:
+        if target_date is None:
+            target_date = date.today() - timedelta(days=1)
 
-        base = run_date or datetime.now(UTC)
-        target_day = (base - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        start = target_day
-        end = target_day + timedelta(days=1)
-
-        digest = self._digest_repository.create_run(run_date=start)
+        run = DigestRun(
+            id=uuid4(),
+            date_label=target_date,
+            status="running",
+            triggered_by=triggered_by,
+            started_at=datetime.now(tz=timezone.utc),
+        )
+        await self._digest_repo.save_run(run)
 
         try:
-            with self._tracing.span("digest.select_sources"):
-                articles = self._article_repository.list_between(start=start, end=end)
-            if not articles:
-                empty_digest = Digest(
-                    id=digest.id,
-                    run_date=digest.run_date,
-                    status=DigestStatus.SUCCEEDED,
-                    created_at=digest.created_at,
-                    items=tuple(),
-                )
-                self._metrics.increment("digest.empty_count")
-                return self._digest_repository.complete_run(empty_digest)
-
-            article_ids = [article.id for article in articles]
-            matches = self._match_repository.list_for_articles(article_ids)
-            topics = {
-                topic.id: topic
-                for topic in self._topic_repository.list_all(active_only=False)
-            }
-
-            grouped_matches: dict[UUID, list[TopicMatch]] = defaultdict(list)
-            for match in matches:
-                grouped_matches[match.article_id].append(match)
-
-            sources: list[DigestSourceArticle] = []
-            for article in articles:
-                article_matches = grouped_matches.get(article.id)
-                if not article_matches:
-                    sources.append(
-                        DigestSourceArticle(
-                            article=article,
-                            topic_id=None,
-                            topic_name="Uncategorized",
-                        )
-                    )
-                    continue
-
-                for match in article_matches:
-                    topic = topics.get(match.topic_id)
-                    topic_name = topic.name if topic is not None else "Unknown Topic"
-                    sources.append(
-                        DigestSourceArticle(
-                            article=article,
-                            topic_id=match.topic_id,
-                            topic_name=topic_name,
-                        )
-                    )
-
-            with self._tracing.span("digest.generate_sections"):
-                deduped_sources = self._deduper.dedupe(sources)
-                section_drafts = self._generator.generate_sections(deduped_sources)
-
-            completed = Digest(
-                id=digest.id,
-                run_date=digest.run_date,
-                status=DigestStatus.SUCCEEDED,
-                created_at=digest.created_at,
-                items=tuple(
-                    DigestItem(
-                        topic_id=section.topic_id,
-                        topic_name=section.topic_name,
-                        summary=section.summary,
-                        source_urls=section.source_urls,
-                        citation_article_ids=section.citation_article_ids,
-                    )
-                    for section in section_drafts
-                ),
+            articles = await self._article_repo.list_by_date(target_date)
+            matches = await self._match_repo.list_by_article_ids(
+                [a.id for a in articles]
             )
-            completed_digest = self._digest_repository.complete_run(completed)
-            self._metrics.increment("digest.success_count")
-            self._metrics.observe("digest.section_count", float(len(completed_digest.items)))
+            articles_with_topics = join_matches(articles, matches)
+            selected = select_articles_for_digest(articles_with_topics, target_date)
 
-            if notify_chat_id and self._notifier is not None:
-                message = self._render_notification(completed_digest)
-                self._notifier.send_message(chat_id=notify_chat_id, text=message)
+            if not selected:
+                log.info("digest.empty", date=str(target_date))
+                await self._digest_repo.update_run(
+                    run.id,
+                    status="succeeded",
+                    article_count=0,
+                    section_count=0,
+                    finished_at=datetime.now(tz=timezone.utc),
+                )
+                self._metrics.increment("digest_empty_total")
+                return dataclasses.replace(run, status="succeeded")
 
-            return completed_digest
-        except Exception as exc:
-            logger.exception("digest_generation_failed")
-            self._metrics.increment("digest.failure_count")
-            return self._digest_repository.fail_run(digest.id, str(exc))
+            topics = await self._topic_repo.list_active()
+            groups = group_by_topic(selected, topics)
+            groups = [deduplicate_sources_within_group(g) for g in groups]
 
-    def _render_notification(self, digest: Digest) -> str:
-        lines = [f"Daily Digest ({digest.run_date.date().isoformat()})"]
-        if not digest.items:
-            lines.append("No relevant articles yesterday.")
-            return "\n".join(lines)
+            items = []
+            for position, group in enumerate(groups):
+                summary = await summarise_topic_group(
+                    self._llm,
+                    model=self._settings.ollama_digest_model,
+                    group=group,
+                )
+                if not summary:
+                    continue
+                items.append(
+                    DigestItem(
+                        id=uuid4(),
+                        run_id=run.id,
+                        topic_id=group.topic.id,
+                        topic_name=group.topic.name,
+                        summary=summary,
+                        article_ids=[a.id for a in group.articles],
+                        article_urls=[a.url for a in group.articles],
+                        article_titles=[a.title or "" for a in group.articles],
+                        position=position,
+                        created_at=datetime.now(tz=timezone.utc),
+                    )
+                )
 
-        for item in digest.items:
-            lines.append(f"- {item.topic_name}: {item.summary}")
-        return "\n".join(lines)
+            await self._digest_repo.save_items(items)
+            await self._digest_repo.update_run(
+                run.id,
+                status="succeeded",
+                article_count=len(selected),
+                section_count=len(items),
+                finished_at=datetime.now(tz=timezone.utc),
+            )
+
+            self._metrics.increment("digest_success_total")
+            self._metrics.observe("digest_section_count", len(items))
+            log.info(
+                "digest.succeeded",
+                date=str(target_date),
+                sections=len(items),
+                articles=len(selected),
+            )
+            return dataclasses.replace(
+                run, status="succeeded", section_count=len(items), article_count=len(selected)
+            )
+
+        except Exception as e:
+            await self._digest_repo.update_run(
+                run.id,
+                status="failed",
+                finished_at=datetime.now(tz=timezone.utc),
+                error_message=str(e),
+            )
+            self._metrics.increment("digest_failure_total")
+            log.error("digest.failed", date=str(target_date), error=str(e))
+            raise

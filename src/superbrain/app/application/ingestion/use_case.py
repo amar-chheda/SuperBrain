@@ -1,227 +1,238 @@
-"""URL ingestion orchestration use case."""
+"""Ingestion pipeline use case.
 
-import hashlib
-import logging
-from dataclasses import dataclass
+Orchestrates the full article ingestion flow: crawl → dedup → chunk → embed → persist.
+This is called by the background task registered in the ingestion API routes.
+"""
+
+from __future__ import annotations
+
+import time
 from datetime import UTC, datetime
-from uuid import uuid4
+from typing import TYPE_CHECKING
+from uuid import UUID, uuid4
 
-from superbrain.app.application.ingestion.deduplication import (
-    DeduplicationReason,
-    DeduplicationService,
+import structlog
+
+from superbrain.app.application.ingestion.chunking_agent import decide_chunking_strategy
+from superbrain.app.application.ingestion.dedup import compute_content_hash
+from superbrain.app.application.metrics import MetricsRecorder
+from superbrain.app.application.ports import CrawlerPort, EmbeddingPort, LLMPort
+from superbrain.app.domain.entities import Article, Chunk
+from superbrain.app.domain.exceptions import CrawlerError
+from superbrain.app.domain.repositories import (
+    ArticleRepository,
+    ChunkRepository,
+    IngestionJobRepository,
 )
-from superbrain.app.application.ports import (
-    ArticleExtractor,
-    ChunkingStrategy,
-    EmbeddingProvider,
-    UrlCanonicalizer,
-)
-from superbrain.app.domain.models import Article, ArticleChunk, IngestionStatus, NewIngestionJob
-from superbrain.app.domain.repositories import ArticleRepository, IngestionJobRepository
-from superbrain.app.observability.metrics import InMemoryMetricsRecorder, MetricsRecorder
-from superbrain.app.observability.timing import timed
-from superbrain.app.observability.tracing import TracingHook
+from superbrain.app.infrastructure.chunkers.factory import ChunkerFactory
+from superbrain.app.infrastructure.chunkers.fixed import count_tokens
+from superbrain.app.infrastructure.crawlers.url_utils import canonicalise_url
+from superbrain.settings import Settings
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from superbrain.app.application.topics.use_cases import ClassifyArticleUseCase
+
+log = structlog.get_logger(__name__)
 
 
-@dataclass(slots=True, frozen=True)
-class IngestUrlResult:
-    """Output of URL ingestion use case."""
+class IngestArticleUseCase:
+    """Orchestrates the full article ingestion pipeline.
 
-    job_id: str
-    status: IngestionStatus
-    article_id: str | None
-    duplicate: bool
-    duplicate_reason: str | None
-    canonical_url: str
-
-
-class IngestUrlUseCase:
-    """Ingest an article URL into persisted article/chunk records."""
+    Responsibilities (in order):
+        1. Load the ingestion job
+        2. Mark job as 'processing'
+        3. Crawl the URL (or use stored raw_text for text/pdf jobs)
+        4. Canonicalise URL and compute content hash
+        5. Dedup check — skip if already ingested
+        6. Persist Article with status='processing'
+        7. LLM decides chunking strategy
+        8. Chunk the text
+        9. Embed all chunks (single batch call)
+        10. Persist Chunk objects
+        11. Mark Article as 'succeeded'
+        12. Mark Job as 'succeeded'
+    """
 
     def __init__(
         self,
-        article_repository: ArticleRepository,
-        ingestion_job_repository: IngestionJobRepository,
-        canonicalizer: UrlCanonicalizer,
-        extractor: ArticleExtractor,
-        chunking_strategy: ChunkingStrategy,
-        embedding_provider: EmbeddingProvider,
-        metrics: MetricsRecorder | None = None,
+        article_repo: ArticleRepository,
+        chunk_repo: ChunkRepository,
+        ingestion_job_repo: IngestionJobRepository,
+        crawler: CrawlerPort,
+        embedder: EmbeddingPort,
+        llm: LLMPort,
+        chunker_factory: ChunkerFactory,
+        metrics: MetricsRecorder,
+        settings: Settings,
+        classify_use_case: ClassifyArticleUseCase | None = None,
     ) -> None:
-        """Initialize dependencies required for URL ingestion."""
+        """Initialise with all required dependencies.
 
-        self._article_repository = article_repository
-        self._ingestion_job_repository = ingestion_job_repository
-        self._canonicalizer = canonicalizer
-        self._extractor = extractor
-        self._chunking_strategy = chunking_strategy
-        self._embedding_provider = embedding_provider
-        self._metrics = metrics or InMemoryMetricsRecorder()
-        self._tracing = TracingHook("superbrain.ingestion")
+        Args:
+            article_repo: Repository for Article persistence.
+            chunk_repo: Repository for Chunk persistence.
+            ingestion_job_repo: Repository for IngestionJob persistence.
+            crawler: Web crawler backend.
+            embedder: Embedding model backend.
+            llm: LLM backend for chunking strategy decisions.
+            chunker_factory: Factory that returns the right chunker by strategy.
+            metrics: Shared in-memory metrics recorder.
+            settings: Application settings (model names, etc.).
+            classify_use_case: Optional topic classifier — when provided, every
+                newly ingested article is classified immediately after embedding.
+        """
+        self._article_repo = article_repo
+        self._chunk_repo = chunk_repo
+        self._job_repo = ingestion_job_repo
+        self._crawler = crawler
+        self._embedder = embedder
+        self._llm = llm
+        self._chunker_factory = chunker_factory
+        self._metrics = metrics
+        self._settings = settings
+        self._classify_use_case = classify_use_case
 
-    def ingest(self, url: str) -> IngestUrlResult:
-        """Execute URL ingestion workflow and return resulting job state."""
+    async def execute(self, job_id: UUID) -> None:
+        """Run the full ingestion pipeline for the given job.
 
-        logger.info("ingestion_url_received", extra={"source_url": url})
+        Loads the job, crawls the content, deduplicates, chunks, embeds,
+        and persists everything. Updates job status throughout.
 
-        canonical_url = self._canonicalizer.canonicalize(url)
-        job = self._ingestion_job_repository.create(
-            NewIngestionJob(source_url=url, canonical_url=canonical_url).to_job()
-        )
-        self._ingestion_job_repository.update_status(job.id, IngestionStatus.RUNNING)
+        Args:
+            job_id: UUID of the IngestionJob to process.
 
-        deduplication_service = DeduplicationService(self._article_repository)
-        with self._tracing.span("ingestion.dedup"), timed() as dedup_timing:
-            dedup_result = deduplication_service.check_url(
-                source_url=url,
-                canonical_url=canonical_url,
-            )
-        logger.info(
-            "ingestion_dedup_complete",
-            extra={
-                "job_id": str(job.id),
-                "elapsed_ms": dedup_timing.elapsed_ms,
-                "is_duplicate": dedup_result.is_duplicate,
-                "reason": dedup_result.reason.value if dedup_result.reason else None,
-            },
-        )
-        self._metrics.observe("ingestion.dedup_latency_ms", dedup_timing.elapsed_ms)
+        Raises:
+            Exception: Re-raises any pipeline failure after marking the job failed.
+        """
+        structlog.contextvars.bind_contextvars(job_id=str(job_id))
 
-        if dedup_result.is_duplicate:
-            self._metrics.increment("ingestion.duplicate_count")
-            completed = self._ingestion_job_repository.update_status(
-                job.id,
-                IngestionStatus.SUCCEEDED,
-                article_id=dedup_result.article_id,
-            )
-            return IngestUrlResult(
-                job_id=str(completed.id),
-                status=completed.status,
-                article_id=str(completed.article_id) if completed.article_id else None,
-                duplicate=True,
-                duplicate_reason=dedup_result.reason.value if dedup_result.reason else None,
-                canonical_url=canonical_url,
-            )
+        job = await self._job_repo.find_by_id(job_id)
+        if job is None:
+            log.error("ingestion.job_not_found", job_id=str(job_id))
+            return
+
+        await self._job_repo.update_status(job_id, "processing")
 
         try:
-            with self._tracing.span("ingestion.extract"), timed() as extraction_timing:
-                extracted = self._extractor.extract(url)
-            logger.info(
-                "ingestion_extraction_complete",
-                extra={"job_id": str(job.id), "elapsed_ms": extraction_timing.elapsed_ms},
-            )
-            self._metrics.observe("ingestion.extraction_latency_ms", extraction_timing.elapsed_ms)
-
-            normalized_content = "\n".join(
-                line.strip() for line in extracted.body_text.splitlines() if line.strip()
-            )
-            content_hash = hashlib.sha256(normalized_content.encode("utf-8")).hexdigest()
-
-            content_dedup = deduplication_service.check_content_hash(content_hash)
-            if content_dedup.is_duplicate:
-                completed = self._ingestion_job_repository.update_status(
-                    job.id,
-                    IngestionStatus.SUCCEEDED,
-                    article_id=content_dedup.article_id,
+            # Step 3: Crawl
+            crawl_start = time.monotonic()
+            if job.input_type == "url":
+                crawl_result = await self._crawler.fetch(job.input_value)
+            else:
+                # pdf/text jobs carry their content directly in input_value
+                from superbrain.app.application.ports import CrawlResult
+                crawl_result = CrawlResult(
+                    url=job.input_value,
+                    canonical_url=job.input_value,
+                    raw_text=job.input_value if job.input_type == "text" else "",
+                    title=None,
+                    author=None,
+                    published_at=None,
+                    status_code=200,
                 )
-                return IngestUrlResult(
-                    job_id=str(completed.id),
-                    status=completed.status,
-                    article_id=str(completed.article_id) if completed.article_id else None,
-                    duplicate=True,
-                    duplicate_reason=DeduplicationReason.CONTENT_HASH.value,
-                    canonical_url=canonical_url,
-                )
+            crawl_ms = int((time.monotonic() - crawl_start) * 1000)
+            self._metrics.observe("crawl_latency_ms", crawl_ms)
 
+            if not crawl_result.raw_text:
+                raise CrawlerError("Crawl returned empty text")
+
+            # Step 4: Canonicalise + hash
+            canonical_url = canonicalise_url(crawl_result.url)
+            content_hash = compute_content_hash(crawl_result.raw_text)
+
+            # Step 5: Dedup
+            existing = await self._article_repo.find_by_hash(content_hash)
+            if existing is not None:
+                await self._job_repo.update_status(job_id, "succeeded")
+                self._metrics.increment("ingestion_dedup_total")
+                log.info("ingestion.dedup.skipped", article_id=str(existing.id))
+                return
+
+            # Step 6: Persist article (status=processing)
             article = Article(
                 id=uuid4(),
-                source_url=url,
-                canonical_url=self._canonicalizer.canonicalize(extracted.canonical_url),
-                domain=extracted.domain,
-                title=extracted.title,
-                author=extracted.author,
-                published_at=extracted.published_at,
-                content=normalized_content,
+                url=crawl_result.url,
+                canonical_url=canonical_url,
                 content_hash=content_hash,
-                extraction_quality_score=extracted.extraction_quality_score,
-                extraction_notes=extracted.extraction_notes,
-                created_at=datetime.now(UTC),
+                raw_text=crawl_result.raw_text,
+                title=crawl_result.title,
+                author=crawl_result.author,
+                published_at=crawl_result.published_at,
+                ingested_at=datetime.now(UTC),
+                status="processing",
             )
+            await self._article_repo.save(article)
+            structlog.contextvars.bind_contextvars(article_id=str(article.id))
 
-            persisted_article = self._article_repository.save(article)
-            if extracted.raw_html is not None:
-                self._article_repository.save_raw_snapshot(persisted_article.id, extracted.raw_html)
-
-            with self._tracing.span("ingestion.chunk"), timed() as chunking_timing:
-                chunk_drafts = self._chunking_strategy.chunk(normalized_content)
-            logger.info(
-                "ingestion_chunking_complete",
-                extra={
-                    "job_id": str(job.id),
-                    "elapsed_ms": chunking_timing.elapsed_ms,
-                    "chunk_count": len(chunk_drafts),
-                },
+            # Step 7: LLM decides chunking strategy
+            decision_start = time.monotonic()
+            strategy = await decide_chunking_strategy(
+                self._llm,
+                model=self._settings.ollama_classification_model,
+                article_text=crawl_result.raw_text,
+                title=crawl_result.title,
+                related_entity_id=article.id,
             )
-            self._metrics.observe("ingestion.chunking_latency_ms", chunking_timing.elapsed_ms)
+            decision_ms = int((time.monotonic() - decision_start) * 1000)
+            self._metrics.observe("chunk_decision_latency_ms", decision_ms)
 
-            with self._tracing.span("ingestion.embed"), timed() as embedding_timing:
-                embeddings = self._embedding_provider.embed_documents(
-                    [chunk.text for chunk in chunk_drafts]
-                )
-            logger.info(
-                "ingestion_embedding_complete",
-                extra={"job_id": str(job.id), "elapsed_ms": embedding_timing.elapsed_ms},
-            )
-            self._metrics.observe("ingestion.embedding_latency_ms", embedding_timing.elapsed_ms)
+            # Step 8: Chunk
+            chunker = self._chunker_factory.get(strategy)
+            chunk_texts = chunker.chunk(crawl_result.raw_text, strategy)
 
+            if not chunk_texts:
+                raise ValueError("Chunker returned no chunks")
+
+            # Step 9: Embed (single batch call) — stored corpus text uses the
+            # "document" task prefix so it shares nomic's space with query embeddings.
+            embed_start = time.monotonic()
+            embeddings = await self._embedder.embed(chunk_texts, input_type="document")
+            embed_ms = int((time.monotonic() - embed_start) * 1000)
+            self._metrics.observe("embedding_latency_ms", embed_ms)
+
+            # Step 10: Build Chunk objects
             chunks = [
-                ArticleChunk(
+                Chunk(
                     id=uuid4(),
-                    article_id=persisted_article.id,
-                    index=chunk.index,
-                    text=chunk.text,
-                    token_count=chunk.token_count,
-                    embedding=embeddings[index],
-                    char_start=chunk.char_start,
-                    char_end=chunk.char_end,
+                    article_id=article.id,
+                    content=text,
+                    chunk_index=i,
+                    strategy=strategy,
+                    token_count=count_tokens(text),
+                    embedding=embedding,
                 )
-                for index, chunk in enumerate(chunk_drafts)
+                for i, (text, embedding) in enumerate(zip(chunk_texts, embeddings))
             ]
-            self._article_repository.save_chunks(chunks)
-            logger.info(
-                "ingestion_persistence_complete",
-                extra={"job_id": str(job.id), "article_id": str(persisted_article.id)},
+
+            # Step 11: Persist chunks
+            await self._chunk_repo.save_many(chunks)
+
+            # Step 12: Mark article succeeded
+            await self._article_repo.update_status(article.id, "succeeded")
+
+            # Step 13: Mark job succeeded
+            await self._job_repo.update_status(job_id, "succeeded")
+
+            # Step 14: Classify article against active topics (optional)
+            if self._classify_use_case is not None:
+                try:
+                    await self._classify_use_case.execute(article.id)
+                except Exception as exc:
+                    log.warning("ingestion.classification_failed",
+                                article_id=str(article.id), error=str(exc))
+
+            self._metrics.increment("ingestion_success_total")
+            log.info(
+                "ingestion.succeeded",
+                article_id=str(article.id),
+                chunk_count=len(chunks),
+                strategy=strategy,
+                crawl_ms=crawl_ms,
+                embed_ms=embed_ms,
             )
 
-            completed = self._ingestion_job_repository.update_status(
-                job.id,
-                IngestionStatus.SUCCEEDED,
-                article_id=persisted_article.id,
-            )
-            self._metrics.increment("ingestion.success_count")
-            return IngestUrlResult(
-                job_id=str(completed.id),
-                status=completed.status,
-                article_id=str(completed.article_id) if completed.article_id else None,
-                duplicate=False,
-                duplicate_reason=None,
-                canonical_url=canonical_url,
-            )
         except Exception as exc:
-            failed = self._ingestion_job_repository.update_status(
-                job.id,
-                IngestionStatus.FAILED,
-                error_message=str(exc),
-            )
-            self._metrics.increment("ingestion.failure_count")
-            logger.exception("ingestion_failed", extra={"job_id": str(job.id)})
-            return IngestUrlResult(
-                job_id=str(failed.id),
-                status=failed.status,
-                article_id=None,
-                duplicate=False,
-                duplicate_reason=None,
-                canonical_url=canonical_url,
-            )
+            await self._job_repo.update_status(job_id, "failed", error_message=str(exc))
+            self._metrics.increment("ingestion_failure_total")
+            log.error("ingestion.failed", job_id=str(job_id), error=str(exc))
+            raise

@@ -1,32 +1,36 @@
 services:
-  db:
+  postgres:
     image: pgvector/pgvector:pg16
-    container_name: superbrain-postgres
     environment:
-      POSTGRES_DB: superbrain
       POSTGRES_USER: superbrain
       POSTGRES_PASSWORD: superbrain
+      POSTGRES_DB: superbrain
     ports:
       - "5432:5432"
     volumes:
-      - superbrain_pg_data:/var/lib/postgresql/data
-  prometheus:
-    image: prom/prometheus:v2.55.0
-    container_name: superbrain-prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superbrain -d superbrain"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   grafana:
-    image: grafana/grafana:11.2.2
-    container_name: superbrain-grafana
+    image: grafana/grafana:11.1.0
     ports:
       - "3000:3000"
-    depends_on:
-      - prometheus
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_FEATURE_TOGGLES_ENABLE: publicDashboards
     volumes:
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - postgres
 
 volumes:
-  superbrain_pg_data:
+  pgdata:
+  grafana_data:

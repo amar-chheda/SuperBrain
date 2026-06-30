@@ -1,0 +1,462 @@
+{
+  "title": "Superbrain Observability",
+  "uid": "superbrain-main",
+  "version": 1,
+  "schemaVersion": 38,
+  "refresh": "10s",
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "browser",
+  "tags": ["superbrain"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Ingestion Jobs — Status Over Time",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT date_trunc('minute', created_at) AS time, status, COUNT(*) AS count FROM ingestion_jobs WHERE created_at >= $__timeFrom() AND created_at <= $__timeTo() GROUP BY 1, 2 ORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 2,
+      "title": "Ingestion Jobs — Total by Status",
+      "type": "piechart",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT status, COUNT(*) AS count FROM ingestion_jobs GROUP BY status",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": { "pieType": "donut", "tooltip": { "mode": "single" }, "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "id": 3,
+      "title": "Articles Ingested",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS value FROM articles WHERE ingested_at >= $__timeFrom() AND ingested_at <= $__timeTo()",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" }, "unit": "short", "displayName": "Articles" } }
+    },
+    {
+      "id": 4,
+      "title": "Chunks Stored",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 4, "w": 6, "h": 4 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS value FROM chunks",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" }, "unit": "short", "displayName": "Chunks" } }
+    },
+    {
+      "id": 5,
+      "title": "LLM Calls — Duration by Type (ms)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 16, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT date_trunc('minute', started_at) AS time, request_type, AVG(duration_ms) AS avg_ms FROM model_call_logs WHERE started_at >= $__timeFrom() AND started_at <= $__timeTo() GROUP BY 1, 2 ORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 } }
+      }
+    },
+    {
+      "id": 6,
+      "title": "LLM Calls — Success vs Failure",
+      "type": "piechart",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT status, COUNT(*) AS count FROM model_call_logs WHERE started_at >= $__timeFrom() AND started_at <= $__timeTo() GROUP BY status",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "id": 7,
+      "title": "LLM Calls — Recent Log",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT started_at, request_type, model_name, prompt_template, duration_ms, status, retries FROM model_call_logs WHERE started_at >= $__timeFrom() AND started_at <= $__timeTo() ORDER BY started_at DESC LIMIT 100",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "duration_ms" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3000 }, { "color": "red", "value": 10000 }] } }] },
+          { "matcher": { "id": "byName", "options": "status" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "success": { "color": "green", "index": 0 }, "error": { "color": "red", "index": 1 } } }] }] }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "started_at", "desc": true }] }
+    },
+    {
+      "id": 8,
+      "title": "QA Queries — Latency Over Time",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 16, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT date_trunc('minute', created_at) AS time, AVG(retrieval_latency_ms) AS retrieval_ms, AVG(answer_latency_ms) AS answer_ms FROM query_logs WHERE created_at >= $__timeFrom() AND created_at <= $__timeTo() GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 } }
+      }
+    },
+    {
+      "id": 9,
+      "title": "QA Abort Rate",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 24, "w": 8, "h": 4 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(100.0 * SUM(CASE WHEN aborted THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS value FROM query_logs WHERE created_at >= $__timeFrom() AND created_at <= $__timeTo()",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "percent", "displayName": "Abort Rate", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 25 }] }, "color": { "mode": "thresholds" } } }
+    },
+    {
+      "id": 10,
+      "title": "QA Queries Asked",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 28, "w": 8, "h": 4 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS value FROM query_logs WHERE created_at >= $__timeFrom() AND created_at <= $__timeTo()",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "displayName": "Queries", "color": { "mode": "fixed", "fixedColor": "purple" } } }
+    },
+    {
+      "id": 11,
+      "title": "QA Query Log",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 10 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT created_at, question, answer, aborted, abort_reason, retrieval_latency_ms, answer_latency_ms FROM query_logs WHERE created_at >= $__timeFrom() AND created_at <= $__timeTo() ORDER BY created_at DESC LIMIT 50",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "retrieval_latency_ms" }, "properties": [{ "id": "unit", "value": "ms" }] },
+          { "matcher": { "id": "byName", "options": "answer_latency_ms" }, "properties": [{ "id": "unit", "value": "ms" }] },
+          { "matcher": { "id": "byName", "options": "aborted" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "false": { "color": "green", "index": 0 }, "true": { "color": "red", "index": 1 } } }] }] },
+          { "matcher": { "id": "byName", "options": "question" }, "properties": [{ "id": "custom.width", "value": 350 }] },
+          { "matcher": { "id": "byName", "options": "answer" }, "properties": [{ "id": "custom.width", "value": 450 }] }
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "title": "Ingestion Jobs — Recent",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 42, "w": 24, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT j.created_at, j.input_value, j.status, j.source, a.title FROM ingestion_jobs j LEFT JOIN articles a ON a.url = j.input_value OR a.canonical_url = j.input_value WHERE j.created_at >= $__timeFrom() AND j.created_at <= $__timeTo() ORDER BY j.created_at DESC LIMIT 50",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "status" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "completed": { "color": "green", "index": 0 }, "failed": { "color": "red", "index": 1 }, "pending": { "color": "yellow", "index": 2 } } }] }] },
+          { "matcher": { "id": "byName", "options": "input_value" }, "properties": [{ "id": "custom.width", "value": 400 }] }
+        ]
+      }
+    },
+    {
+      "id": 13,
+      "title": "LLM Call Inspector — Prompt & Response",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 50, "w": 24, "h": 10 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT started_at, request_type, model_name, prompt_template, duration_ms, status, LEFT(prompt_input, 600) AS prompt_preview, LEFT(response_output, 600) AS response_preview FROM model_call_logs WHERE started_at >= $__timeFrom() AND started_at <= $__timeTo() ORDER BY started_at DESC LIMIT 50",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "prompt_preview" }, "properties": [{ "id": "custom.width", "value": 500 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "response_preview" }, "properties": [{ "id": "custom.width", "value": 500 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "duration_ms" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3000 }, { "color": "red", "value": 10000 }] } }] },
+          { "matcher": { "id": "byName", "options": "status" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "success": { "color": "green", "index": 0 }, "error": { "color": "red", "index": 1 } } }] }] }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "started_at", "desc": true }] }
+    },
+    {
+      "id": 14,
+      "title": "QA Retrieval Trace — Evidence Selected per Query",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 60, "w": 24, "h": 10 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.created_at, LEFT(q.question, 120) AS question, e->>'article' AS article, e->>'url' AS url, ROUND((e->>'rrf_score')::numeric, 5) AS rrf_score, LEFT(e->>'content', 300) AS content_preview FROM query_logs q CROSS JOIN jsonb_array_elements(q.retrieval_trace->'evidence') AS e WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.retrieval_trace IS NOT NULL ORDER BY q.created_at DESC, rrf_score DESC LIMIT 100",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rrf_score" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "green", "value": 0.02 }] } }] },
+          { "matcher": { "id": "byName", "options": "content_preview" }, "properties": [{ "id": "custom.width", "value": 500 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "question" }, "properties": [{ "id": "custom.width", "value": 280 }] },
+          { "matcher": { "id": "byName", "options": "url" }, "properties": [{ "id": "custom.width", "value": 260 }] }
+        ]
+      }
+    },
+    {
+      "id": 15,
+      "title": "QA Retrieval Trace — Vector vs BM25 Hits",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 70, "w": 24, "h": 10 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.created_at, LEFT(q.question, 100) AS question, 'vector' AS source, v->>'article' AS article, ROUND((v->>'score')::numeric, 4) AS score, LEFT(v->>'content', 200) AS content_preview FROM query_logs q CROSS JOIN jsonb_array_elements(q.retrieval_trace->'vector_hits') AS v WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.retrieval_trace IS NOT NULL UNION ALL SELECT q.created_at, LEFT(q.question, 100), 'bm25', b->>'article', ROUND((b->>'score')::numeric, 4), LEFT(b->>'content', 200) FROM query_logs q CROSS JOIN jsonb_array_elements(q.retrieval_trace->'bm25_hits') AS b WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.retrieval_trace IS NOT NULL ORDER BY created_at DESC, source, score DESC LIMIT 200",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "source" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "vector": { "color": "blue", "index": 0 }, "bm25": { "color": "orange", "index": 1 } } }] }] },
+          { "matcher": { "id": "byName", "options": "content_preview" }, "properties": [{ "id": "custom.width", "value": 450 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "score" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "green", "value": 0.75 }] } }] }
+        ]
+      }
+    },
+    {
+      "id": 16,
+      "title": "QA Debug Inspector — Question vs Retrieved Evidence",
+      "description": "One row per query. model_refused=true means the LLM saw the evidence but decided it was irrelevant (aborted=false means the code sufficiency check passed — the mismatch between these two flags is the signal).",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 80, "w": 24, "h": 10 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.created_at, LEFT(q.question, 120) AS question, q.aborted, q.abort_reason, CASE WHEN q.answer ILIKE '%cannot answer%' THEN true ELSE false END AS model_refused, LEFT(q.answer, 150) AS model_response, (SELECT string_agg(e->>'article', ' | ' ORDER BY (e->>'rrf_score')::numeric DESC) FROM jsonb_array_elements(q.retrieval_trace->'evidence') e) AS retrieved_articles, (SELECT string_agg(ROUND((e->>'rrf_score')::numeric, 4)::text, ' | ' ORDER BY (e->>'rrf_score')::numeric DESC) FROM jsonb_array_elements(q.retrieval_trace->'evidence') e) AS rrf_scores FROM query_logs q WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.retrieval_trace IS NOT NULL ORDER BY q.created_at DESC LIMIT 30",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "aborted" }, "properties": [{ "id": "custom.width", "value": 80 }, { "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "false": { "color": "green", "index": 0 }, "true": { "color": "red", "index": 1 } } }] }] },
+          { "matcher": { "id": "byName", "options": "model_refused" }, "properties": [{ "id": "custom.width", "value": 100 }, { "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "false": { "color": "green", "index": 0 }, "true": { "color": "orange", "index": 1 } } }] }] },
+          { "matcher": { "id": "byName", "options": "question" }, "properties": [{ "id": "custom.width", "value": 220 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "model_response" }, "properties": [{ "id": "custom.width", "value": 220 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "retrieved_articles" }, "properties": [{ "id": "custom.width", "value": 350 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "rrf_scores" }, "properties": [{ "id": "custom.width", "value": 160 }] }
+        ]
+      }
+    },
+    {
+      "id": 17,
+      "title": "QA Refusal Rate — Code Abort vs Model Refused",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 90, "w": 24, "h": 7 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT date_trunc('hour', created_at) AS time, COUNT(*) FILTER (WHERE aborted = true) AS code_aborted, COUNT(*) FILTER (WHERE aborted = false AND answer ILIKE '%cannot answer%') AS model_refused, COUNT(*) FILTER (WHERE aborted = false AND answer NOT ILIKE '%cannot answer%') AS answered FROM query_logs WHERE created_at >= $__timeFrom() AND created_at <= $__timeTo() GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "code_aborted" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "model_refused" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "answered" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 18,
+      "title": "QA Decomposition — Raw Ask vs Search Query vs Directives",
+      "description": "How each question was split. search_query is what actually gets embedded/reranked; answer_directives are routed to the generation prompt only. analysis_fell_back=true means the LLM analyzer failed and a deterministic strip was used.",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 97, "w": 24, "h": 9 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.created_at, LEFT(q.question, 90) AS raw_question, q.retrieval_trace->'query_analysis'->>'search_query' AS search_query, q.retrieval_trace->'query_analysis'->>'keywords' AS keywords, q.retrieval_trace->'query_analysis'->>'answer_directives' AS answer_directives, q.retrieval_trace->'query_analysis'->>'intent' AS intent, q.retrieval_trace->'query_analysis'->>'fell_back' AS analysis_fell_back FROM query_logs q WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.retrieval_trace IS NOT NULL ORDER BY q.created_at DESC LIMIT 50",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "raw_question" }, "properties": [{ "id": "custom.width", "value": 280 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "search_query" }, "properties": [{ "id": "custom.width", "value": 220 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "answer_directives" }, "properties": [{ "id": "custom.width", "value": 200 }] },
+          { "matcher": { "id": "byName", "options": "analysis_fell_back" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "false": { "color": "green", "index": 0 }, "true": { "color": "orange", "index": 1 } } }] }] }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "created_at", "desc": true }] }
+    },
+    {
+      "id": 19,
+      "title": "QA Gate Decisions — Why each query answered or refused",
+      "description": "decision = answer/refuse. stage = which gate decided (recall_floor, rerank, evidence_sufficiency, url_lookup, answered). top_rerank is the best SLM relevance score (gate refuses below qa_min_rerank_score).",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 106, "w": 24, "h": 9 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.created_at, LEFT(q.question, 80) AS question, q.retrieval_trace->'gate'->>'decision' AS decision, q.retrieval_trace->'gate'->>'stage' AS stage, ROUND((q.retrieval_trace->'gate'->>'best_vector')::numeric, 3) AS best_vector, ROUND((q.retrieval_trace->'gate'->>'best_bm25')::numeric, 3) AS best_bm25, ROUND((q.retrieval_trace->'gate'->>'top_rerank')::numeric, 3) AS top_rerank, LEFT(q.retrieval_trace->'gate'->>'reason', 140) AS reason FROM query_logs q WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.retrieval_trace IS NOT NULL ORDER BY q.created_at DESC LIMIT 50",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "decision" }, "properties": [{ "id": "custom.width", "value": 90 }, { "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "answer": { "color": "green", "index": 0 }, "refuse": { "color": "red", "index": 1 } } }] }] },
+          { "matcher": { "id": "byName", "options": "stage" }, "properties": [{ "id": "custom.width", "value": 150 }] },
+          { "matcher": { "id": "byName", "options": "top_rerank" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "green", "value": 0.5 }] } }] },
+          { "matcher": { "id": "byName", "options": "reason" }, "properties": [{ "id": "custom.width", "value": 360 }, { "id": "custom.wrap", "value": true }] }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "created_at", "desc": true }] }
+    },
+    {
+      "id": 20,
+      "title": "QA Reranker — Candidate Scores (rerank vs RRF)",
+      "description": "Every fused candidate with its SLM relevance score. Watch for flat/low rerank_score across all candidates — that is the 'I don't really have this' signal that the old RRF-only gate missed.",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 115, "w": 24, "h": 10 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.created_at, LEFT(q.question, 80) AS question, f->>'article' AS article, ROUND((f->>'rrf_score')::numeric, 5) AS rrf_score, ROUND((f->>'rerank_score')::numeric, 3) AS rerank_score, LEFT(f->>'url', 70) AS url FROM query_logs q CROSS JOIN jsonb_array_elements(q.retrieval_trace->'fused') AS f WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.retrieval_trace IS NOT NULL ORDER BY q.created_at DESC, rerank_score DESC NULLS LAST LIMIT 200",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "question" }, "properties": [{ "id": "custom.width", "value": 220 }] },
+          { "matcher": { "id": "byName", "options": "rerank_score" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "green", "value": 0.5 }] } }] },
+          { "matcher": { "id": "byName", "options": "url" }, "properties": [{ "id": "custom.width", "value": 320 }] }
+        ]
+      }
+    },
+    {
+      "id": 21,
+      "title": "QA Pipeline — Stage Latency (ms)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 125, "w": 16, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT date_trunc('minute', created_at) AS time, AVG((retrieval_trace->'stage_latencies_ms'->>'analysis')::numeric) AS analysis_ms, AVG((retrieval_trace->'stage_latencies_ms'->>'retrieval')::numeric) AS retrieval_ms, AVG((retrieval_trace->'stage_latencies_ms'->>'rerank')::numeric) AS rerank_ms, AVG((retrieval_trace->'stage_latencies_ms'->>'answer')::numeric) AS answer_ms FROM query_logs WHERE created_at >= $__timeFrom() AND created_at <= $__timeTo() AND retrieval_trace IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } } }
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 22,
+      "title": "QA Refusals — by Gate Stage",
+      "type": "piechart",
+      "gridPos": { "x": 16, "y": 125, "w": 8, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.retrieval_trace->'gate'->>'stage' AS stage, COUNT(*) AS count FROM query_logs q WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.aborted = true AND q.retrieval_trace IS NOT NULL GROUP BY 1 ORDER BY count DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "id": 23,
+      "title": "QA Degradation — Analyzer & Reranker Fallbacks",
+      "description": "When the SLM analyzer or reranker fails, the pipeline degrades (deterministic strip / RRF order). Spikes here mean the small models are struggling and answers are running on the fallback path.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 133, "w": 24, "h": 7 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT date_trunc('hour', created_at) AS time, COUNT(*) FILTER (WHERE retrieval_trace->'query_analysis'->>'fell_back' = 'true') AS analysis_fallback, COUNT(*) FILTER (WHERE retrieval_trace->>'rerank_fell_back' = 'true') AS rerank_fallback FROM query_logs WHERE created_at >= $__timeFrom() AND created_at <= $__timeTo() AND retrieval_trace IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "analysis_fallback" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "rerank_fallback" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    }
+  ]
+}

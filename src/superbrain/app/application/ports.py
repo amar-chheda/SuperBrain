@@ -1,122 +1,118 @@
-"""Application-level interfaces for external providers and core services."""
+"""Provider and service port interfaces for the application layer.
 
+Defines the abstract contracts for all external capabilities the application
+needs: crawling, embedding, LLM completion, and text chunking. Infrastructure
+implementations live in infrastructure/ and are wired in at startup.
+"""
+
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
-
-from superbrain.app.application.qa.models import GeneratedAnswer
-from superbrain.app.application.retrieval.models import EvidenceSet, RetrievalResult
-from superbrain.app.domain.models import QueryResponse
+from typing import Literal
+from uuid import UUID
 
 
-@dataclass(slots=True, frozen=True)
-class ExtractedArticle:
-    """Structured extraction output used by ingestion workflows."""
+@dataclass
+class CrawlResult:
+    """The result of fetching and parsing a URL."""
 
-    title: str
+    url: str
     canonical_url: str
-    source_url: str
-    domain: str
+    raw_text: str
+    title: str | None
     author: str | None
     published_at: datetime | None
-    body_text: str
-    raw_html: str | None
-    extraction_quality_score: float
-    extraction_notes: str
+    status_code: int
 
 
-@dataclass(slots=True, frozen=True)
-class ChunkDraft:
-    """Chunk draft before persistence."""
+class CrawlerPort(ABC):
+    """Abstract interface for web page fetching and text extraction."""
 
-    index: int
-    text: str
-    token_count: int
-    char_start: int
-    char_end: int
+    @abstractmethod
+    async def fetch(self, url: str) -> CrawlResult:
+        """Fetch a URL and extract its text content.
 
+        Args:
+            url: The URL to crawl.
 
-class UrlCanonicalizer(Protocol):
-    """Normalize URLs into canonical forms."""
+        Returns:
+            Parsed crawl result with extracted text and metadata.
 
-    def canonicalize(self, url: str) -> str:
-        """Return canonical representation for URL deduplication."""
-
-
-class ArticleExtractor(Protocol):
-    """Extract normalized article content from a source URL."""
-
-    def extract(self, url: str) -> ExtractedArticle:
-        """Extract canonical article content for a URL."""
+        Raises:
+            Exception: If the URL cannot be fetched or parsed.
+        """
 
 
-class ChunkingStrategy(Protocol):
-    """Split normalized article text into indexable chunks."""
+class EmbeddingPort(ABC):
+    """Abstract interface for generating text embeddings."""
 
-    def chunk(self, text: str) -> list[ChunkDraft]:
-        """Create chunk drafts from normalized text."""
+    @abstractmethod
+    async def embed(
+        self,
+        texts: list[str],
+        *,
+        input_type: Literal["query", "document"] = "document",
+    ) -> list[list[float]]:
+        """Generate embeddings for a list of texts.
 
+        Args:
+            texts: List of strings to embed. Must be non-empty.
+            input_type: Retrieval role of the texts. "query" for search queries,
+                "document" for stored corpus text. Models such as nomic-embed-text
+                require a matching task-instruction prefix per role, and query and
+                document embeddings must share the same prefixed space to compare.
 
-class EmbeddingProvider(Protocol):
-    """Generate vector embeddings for ingestion and retrieval."""
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Return dense vectors for indexable texts."""
-
-    def embed_query(self, text: str) -> list[float]:
-        """Return dense vector for a query text."""
-
-    def health_check(self) -> bool:
-        """Return whether provider endpoint/model is reachable."""
-
-
-class ChatModelProvider(Protocol):
-    """Generate structured answers using provided evidence only."""
-
-    def generate_answer(self, question: str, evidence: EvidenceSet) -> GeneratedAnswer:
-        """Return structured answer with citation chunk identifiers."""
-
-    def health_check(self) -> bool:
-        """Return whether provider endpoint/model is reachable."""
+        Returns:
+            List of embedding vectors, one per input text.
+            Each vector has the same fixed dimension (768 for nomic-embed-text).
+        """
 
 
-class RetrievalService(Protocol):
-    """Retrieve candidate evidence snippets for user questions."""
+class LLMPort(ABC):
+    """Abstract interface for local LLM text completion."""
 
-    def retrieve(self, question: str, limit: int = 8) -> RetrievalResult:
-        """Return ranked evidence relevant to a question."""
+    @abstractmethod
+    async def complete(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        json_mode: bool = False,
+        prompt_template: str = "unknown",
+        related_entity_id: "UUID | None" = None,
+    ) -> str:
+        """Request a completion from a local LLM.
 
+        Args:
+            prompt: The full prompt string to send.
+            model: The Ollama model tag to use (e.g. 'llama3.1:8b').
+            json_mode: If True, instruct the model to respond with valid JSON.
+            prompt_template: Name of the prompt template for audit logging.
+            related_entity_id: UUID of the entity being processed, for audit logs.
 
-class Scheduler(Protocol):
-    """Schedule recurring jobs."""
+        Returns:
+            The model's completion text.
 
-    def schedule(self, job_name: str, cron_expression: str) -> None:
-        """Register or update a recurring job."""
-
-
-class TelegramClient(Protocol):
-    """Interact with Telegram for sending notifications."""
-
-    def send_message(self, chat_id: str, text: str) -> None:
-        """Send a message to a Telegram chat."""
-
-
-class IngestionService(Protocol):
-    """Orchestrate article ingestion workflow."""
-
-    def ingest(self, url: str) -> str:
-        """Ingest an article URL and return the created job ID."""
-
-
-class QueryService(Protocol):
-    """Answer user questions using grounded evidence."""
-
-    def answer(self, question: str) -> QueryResponse:
-        """Return grounded answer payload for a question."""
+        Raises:
+            LLMError: If the model call fails after retries.
+        """
 
 
-class DigestService(Protocol):
-    """Build and dispatch digest messages."""
+class ChunkerPort(ABC):
+    """Abstract interface for splitting text into chunks."""
 
-    def run_digest(self) -> int:
-        """Run digest generation and return sent item count."""
+    @abstractmethod
+    def chunk(
+        self,
+        text: str,
+        strategy: Literal["semantic", "recursive", "fixed"],
+    ) -> list[str]:
+        """Split text into chunks using the specified strategy.
+
+        Args:
+            text: The full text to split.
+            strategy: Chunking algorithm to apply.
+
+        Returns:
+            Ordered list of text chunks. Each chunk is a non-empty string.
+        """
