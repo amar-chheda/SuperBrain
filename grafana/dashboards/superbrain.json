@@ -331,6 +331,132 @@
         ]
       },
       "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 18,
+      "title": "QA Decomposition — Raw Ask vs Search Query vs Directives",
+      "description": "How each question was split. search_query is what actually gets embedded/reranked; answer_directives are routed to the generation prompt only. analysis_fell_back=true means the LLM analyzer failed and a deterministic strip was used.",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 97, "w": 24, "h": 9 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.created_at, LEFT(q.question, 90) AS raw_question, q.retrieval_trace->'query_analysis'->>'search_query' AS search_query, q.retrieval_trace->'query_analysis'->>'keywords' AS keywords, q.retrieval_trace->'query_analysis'->>'answer_directives' AS answer_directives, q.retrieval_trace->'query_analysis'->>'intent' AS intent, q.retrieval_trace->'query_analysis'->>'fell_back' AS analysis_fell_back FROM query_logs q WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.retrieval_trace IS NOT NULL ORDER BY q.created_at DESC LIMIT 50",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "raw_question" }, "properties": [{ "id": "custom.width", "value": 280 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "search_query" }, "properties": [{ "id": "custom.width", "value": 220 }, { "id": "custom.wrap", "value": true }] },
+          { "matcher": { "id": "byName", "options": "answer_directives" }, "properties": [{ "id": "custom.width", "value": 200 }] },
+          { "matcher": { "id": "byName", "options": "analysis_fell_back" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "false": { "color": "green", "index": 0 }, "true": { "color": "orange", "index": 1 } } }] }] }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "created_at", "desc": true }] }
+    },
+    {
+      "id": 19,
+      "title": "QA Gate Decisions — Why each query answered or refused",
+      "description": "decision = answer/refuse. stage = which gate decided (recall_floor, rerank, evidence_sufficiency, url_lookup, answered). top_rerank is the best SLM relevance score (gate refuses below qa_min_rerank_score).",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 106, "w": 24, "h": 9 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.created_at, LEFT(q.question, 80) AS question, q.retrieval_trace->'gate'->>'decision' AS decision, q.retrieval_trace->'gate'->>'stage' AS stage, ROUND((q.retrieval_trace->'gate'->>'best_vector')::numeric, 3) AS best_vector, ROUND((q.retrieval_trace->'gate'->>'best_bm25')::numeric, 3) AS best_bm25, ROUND((q.retrieval_trace->'gate'->>'top_rerank')::numeric, 3) AS top_rerank, LEFT(q.retrieval_trace->'gate'->>'reason', 140) AS reason FROM query_logs q WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.retrieval_trace IS NOT NULL ORDER BY q.created_at DESC LIMIT 50",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "decision" }, "properties": [{ "id": "custom.width", "value": 90 }, { "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "answer": { "color": "green", "index": 0 }, "refuse": { "color": "red", "index": 1 } } }] }] },
+          { "matcher": { "id": "byName", "options": "stage" }, "properties": [{ "id": "custom.width", "value": 150 }] },
+          { "matcher": { "id": "byName", "options": "top_rerank" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "green", "value": 0.5 }] } }] },
+          { "matcher": { "id": "byName", "options": "reason" }, "properties": [{ "id": "custom.width", "value": 360 }, { "id": "custom.wrap", "value": true }] }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "created_at", "desc": true }] }
+    },
+    {
+      "id": 20,
+      "title": "QA Reranker — Candidate Scores (rerank vs RRF)",
+      "description": "Every fused candidate with its SLM relevance score. Watch for flat/low rerank_score across all candidates — that is the 'I don't really have this' signal that the old RRF-only gate missed.",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 115, "w": 24, "h": 10 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.created_at, LEFT(q.question, 80) AS question, f->>'article' AS article, ROUND((f->>'rrf_score')::numeric, 5) AS rrf_score, ROUND((f->>'rerank_score')::numeric, 3) AS rerank_score, LEFT(f->>'url', 70) AS url FROM query_logs q CROSS JOIN jsonb_array_elements(q.retrieval_trace->'fused') AS f WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.retrieval_trace IS NOT NULL ORDER BY q.created_at DESC, rerank_score DESC NULLS LAST LIMIT 200",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "question" }, "properties": [{ "id": "custom.width", "value": 220 }] },
+          { "matcher": { "id": "byName", "options": "rerank_score" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "green", "value": 0.5 }] } }] },
+          { "matcher": { "id": "byName", "options": "url" }, "properties": [{ "id": "custom.width", "value": 320 }] }
+        ]
+      }
+    },
+    {
+      "id": 21,
+      "title": "QA Pipeline — Stage Latency (ms)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 125, "w": 16, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT date_trunc('minute', created_at) AS time, AVG((retrieval_trace->'stage_latencies_ms'->>'analysis')::numeric) AS analysis_ms, AVG((retrieval_trace->'stage_latencies_ms'->>'retrieval')::numeric) AS retrieval_ms, AVG((retrieval_trace->'stage_latencies_ms'->>'rerank')::numeric) AS rerank_ms, AVG((retrieval_trace->'stage_latencies_ms'->>'answer')::numeric) AS answer_ms FROM query_logs WHERE created_at >= $__timeFrom() AND created_at <= $__timeTo() AND retrieval_trace IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } } }
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 22,
+      "title": "QA Refusals — by Gate Stage",
+      "type": "piechart",
+      "gridPos": { "x": 16, "y": 125, "w": 8, "h": 8 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT q.retrieval_trace->'gate'->>'stage' AS stage, COUNT(*) AS count FROM query_logs q WHERE q.created_at >= $__timeFrom() AND q.created_at <= $__timeTo() AND q.aborted = true AND q.retrieval_trace IS NOT NULL GROUP BY 1 ORDER BY count DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "id": 23,
+      "title": "QA Degradation — Analyzer & Reranker Fallbacks",
+      "description": "When the SLM analyzer or reranker fails, the pipeline degrades (deterministic strip / RRF order). Spikes here mean the small models are struggling and answers are running on the fallback path.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 133, "w": 24, "h": 7 },
+      "datasource": { "uid": "superbrain-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT date_trunc('hour', created_at) AS time, COUNT(*) FILTER (WHERE retrieval_trace->'query_analysis'->>'fell_back' = 'true') AS analysis_fallback, COUNT(*) FILTER (WHERE retrieval_trace->>'rerank_fell_back' = 'true') AS rerank_fallback FROM query_logs WHERE created_at >= $__timeFrom() AND created_at <= $__timeTo() AND retrieval_trace IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "analysis_fallback" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "rerank_fallback" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "tooltip": { "mode": "multi" } }
     }
   ]
 }

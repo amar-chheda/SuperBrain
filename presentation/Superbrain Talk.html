@@ -2063,11 +2063,11 @@ Return [] if no match."""</span></pre>
   </div>
 </section>
 
-<section data-label="29 Lesson 7 Gates not generators">
+<section data-label="29 Lesson 7 Relevance gate not cosine">
   <div class="frame">
     <div class="title-row">
       <div class="eyebrow"><span class="dot"></span><span class="act">Act 5 · Lessons learned</span></div>
-      <h2 class="h-title"><span class="amber mono" style="font-size: 38px;">LESSON 07 ·</span> Gate on retrieval score — before you call the model.</h2>
+      <h2 class="h-title"><span class="amber mono" style="font-size: 38px;">LESSON 07 ·</span> Gate on relevance — cosine score isn't relevance.</h2>
     </div>
 
     <div class="body-grow" style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: start;">
@@ -2085,20 +2085,19 @@ Return [] if no match."""</span></pre>
 
       <!-- RIGHT: SLM -->
       <div style="display: flex; flex-direction: column; gap: 22px;">
-        <div class="mono amber" style="font-size: 22px; letter-spacing: 0.18em; text-transform: uppercase; padding-bottom: 14px; border-bottom: 1px solid var(--amber-dim);">&#9889; SLM · Superbrain — what we built</div>
-        <div class="h-body" style="font-size: 26px;">SLMs fail <span class="amber">loudly</span> with weak context. That made us build the gate. The gate is right engineering for <em>any</em> RAG system — cloud or local.</div>
+        <div class="mono amber" style="font-size: 22px; letter-spacing: 0.18em; text-transform: uppercase; padding-bottom: 14px; border-bottom: 1px solid var(--amber-dim);">&#9889; SLM · Superbrain — what the trace taught us</div>
+        <div class="h-body" style="font-size: 26px;">We gated on cosine &ge; 0.6. Then the trace showed off-topic queries scoring <span class="amber">0.60&ndash;0.63</span> — overlapping <em>real</em> matches at 0.66&ndash;0.76. <span class="amber">Cosine is recall, not relevance.</span></div>
         <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 21px;">
-          <div style="padding: 10px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;">retrieve top-k chunks via BM25 + vector</div>
-          <div style="padding: 10px 16px; background: rgba(232,177,76,0.06); border: 1px solid var(--amber-dim); border-radius: 8px; color: var(--amber);">if top_score &lt; 0.6 → abort, no LLM call</div>
-          <div style="padding: 10px 16px; background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 8px; color: var(--teal);">else → generate with grounded evidence</div>
-          <div style="padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-size: 20px;">"I don't have enough on that topic.<br/>I can talk about: AI &amp; ML, DeepSeek R1, SLMs…"</div>
+          <div style="padding: 10px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--muted);">v1 · if cosine &ge; 0.6 → answer <span style="color: var(--bad);">← junk slips through</span></div>
+          <div style="padding: 10px 16px; background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 8px; color: var(--teal);">v2 · phi3 scores each chunk's relevance to the query</div>
+          <div style="padding: 10px 16px; background: rgba(91,194,168,0.06); border: 1px solid var(--teal-dim); border-radius: 8px; color: var(--teal);">gate on the rerank score → off-topic chunks drop out</div>
         </div>
       </div>
 
       <div style="grid-column: 1 / -1;">
         <div class="callout">
-          <span class="label">The insight</span>
-          <span style="font-size: 26px;">The gate is not an SLM trick. It's good RAG engineering — available to anyone. <span class="amber">SLMs just made us build it sooner</span>, because the failure was too loud to ignore.</span>
+          <span class="label">The catch</span>
+          <span style="font-size: 26px;">The reranker is itself a small model — and ours sometimes returned JSON with <span class="mono amber">// comments</span>. Invalid JSON &rarr; it <span style="color: var(--bad);">silently fell back</span> to the unfiltered list. <span class="amber">Small models need defensive parsing, graceful degradation, and the trace to catch the fallback.</span></span>
         </div>
       </div>
     </div>

@@ -50,6 +50,8 @@ select = ["E", "F", "I", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/chunking_agent.py" = ["E501"]
+"**/query_analysis.py" = ["E501"]  # long prompt template strings
+"**/reranker.py" = ["E501"]  # long prompt template strings
 
 [project.scripts]
 superbrain = "superbrain.app.cli.commands:app"
