@@ -14,7 +14,7 @@ GROUNDED_QA_PROMPT = """You are a question-answering assistant. Answer using ONL
 
 QUESTION:
 {question}
-
+{format_block}
 EVIDENCE:
 {evidence_block}
 
@@ -22,7 +22,7 @@ RULES:
 - Cite sources inline using their number, like [1] or [2], immediately after the sentence that uses that source.
 - Use ONLY information present in the evidence above. No outside knowledge.
 - If the evidence does not contain enough information, say exactly: "I cannot answer this question based on the available evidence."
-- Keep your answer concise — 2 to 5 sentences unless more detail is needed.
+- {length_rule}
 - End your response with a SOURCES line listing only the numbers you cited, like:
   SOURCES: 1, 2
 
@@ -43,14 +43,34 @@ async def generate_answer(
     model: str,
     question: str,
     evidence: list[Evidence],
+    answer_directives: str = "",
 ) -> tuple[str, list[tuple[int, UUID]], str]:
     """Generate a grounded answer and return (answer_text, cited_pairs, prompt_sent).
 
     cited_pairs is a list of (citation_number, chunk_id) in the order cited.
+    answer_directives are the user's output-shaping instructions (e.g. "be detailed",
+    "use bullet points") extracted upstream — they shape HOW the answer reads, never
+    what counts as evidence.
     """
+    directives = (answer_directives or "").strip()
+    if directives:
+        format_block = (
+            "\nFORMATTING REQUEST (how to shape the answer — does NOT change what "
+            f"counts as evidence):\n{directives}\n"
+        )
+        length_rule = (
+            "Shape the answer per the FORMATTING REQUEST above, staying grounded in "
+            "the evidence."
+        )
+    else:
+        format_block = ""
+        length_rule = "Keep your answer concise — 2 to 5 sentences unless more detail is needed."
+
     prompt = GROUNDED_QA_PROMPT.format(
         question=question,
+        format_block=format_block,
         evidence_block=format_evidence_block(evidence),
+        length_rule=length_rule,
     )
     raw = await llm.complete(prompt, model=model, prompt_template="grounded_qa_v1")
     answer_text, cited_pairs = parse_answer_response(raw, evidence)
