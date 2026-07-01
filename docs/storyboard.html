@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Superbrain Talk — Storyboard Mindmap</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg: #0F1419;
+  --surface: #1A1F26;
+  --surface-2: #232932;
+  --border: #2A323C;
+  --text: #D4D2CC;
+  --muted: #8B8980;
+  --dim: #5C5A55;
+  --amber: #E8B14C;
+  --amber-dim: #8C6A2E;
+  --teal: #5BC2A8;
+  --teal-dim: #2F6A5B;
+  --bad: #C26B5B;
+  --bad-dim: #6B2F22;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+
+/* Header */
+.header {
+  padding: 48px 60px 32px;
+  border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.header .eyebrow { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
+.header h1 { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
+.header h1 span { color: var(--amber); }
+.header .meta { font-size: 14px; color: var(--muted); display: flex; gap: 32px; }
+.header .meta strong { color: var(--text); font-weight: 500; }
+
+/* Legend */
+.legend {
+  padding: 20px 60px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 32px;
+  font-size: 13px; background: var(--surface);
+}
+.legend-item { display: flex; align-items: center; gap: 8px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+/* Main layout: acts as rows, slides within each act as cards */
+.board { padding: 40px 60px 80px; display: flex; flex-direction: column; gap: 48px; }
+
+/* Act section */
+.act-block { display: flex; flex-direction: column; gap: 16px; }
+.act-header {
+  display: flex; align-items: center; gap: 20px;
+}
+.act-number { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
+.act-title { font-size: 18px; font-weight: 600; }
+.act-count { font-size: 13px; font-family: var(--font-mono); color: var(--muted); margin-left: auto; }
+.act-divider { height: 2px; border-radius: 1px; flex-shrink: 0; width: 36px; }
+
+/* Slide cards grid */
+.slides-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+/* Individual slide card */
+.slide-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+  display: flex; flex-direction: column; gap: 8px;
+  position: relative;
+  cursor: default;
+  transition: border-color 0.15s;
+}
+.slide-card:hover { border-color: var(--muted); }
+.slide-card.amber-card { background: rgba(232,177,76,0.06); border-color: rgba(232,177,76,0.3); }
+.slide-card.teal-card { background: rgba(91,194,168,0.05); border-color: rgba(91,194,168,0.28); }
+.slide-card.bad-card { background: rgba(194,107,91,0.07); border-color: rgba(194,107,91,0.35); }
+.slide-card.new-card::after {
+  content: 'NEW';
+  position: absolute; top: 10px; right: 10px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em;
+  color: var(--bad); background: rgba(194,107,91,0.12);
+  padding: 3px 7px; border-radius: 4px;
+}
+
+.slide-num { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; color: var(--dim); }
+.slide-title { font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.slide-key { font-size: 12px; color: var(--muted); line-height: 1.4; margin-top: 4px; }
+.slide-tag {
+  display: inline-block; margin-top: 4px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 4px;
+  background: var(--surface-2); color: var(--dim);
+  width: fit-content;
+}
+.slide-tag.lesson { background: rgba(232,177,76,0.12); color: var(--amber); }
+.slide-tag.failure { background: rgba(194,107,91,0.12); color: var(--bad); }
+.slide-tag.tech { background: rgba(91,194,168,0.10); color: var(--teal); }
+.slide-tag.journey { background: rgba(140,106,46,0.20); color: #C8923A; }
+
+/* Narrative arc strip */
+.arc-strip {
+  margin: 0 60px;
+  padding: 28px 36px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+.arc-strip h2 { margin: 0 0 20px; font-size: 14px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.arc-flow {
+  display: flex; align-items: center; gap: 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.arc-node {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  min-width: 140px;
+}
+.arc-node .circle {
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  flex-shrink: 0;
+}
+.arc-node .label { font-size: 11px; text-align: center; color: var(--muted); line-height: 1.3; max-width: 130px; }
+.arc-arrow { color: var(--dim); font-size: 20px; flex-shrink: 0; margin: 0 -4px; padding-bottom: 24px; }
+
+/* Theme threads */
+.themes { margin: 0 60px 60px; display: flex; flex-direction: column; gap: 12px; }
+.themes h2 { font-size: 14px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.theme-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.theme-row .label { font-family: var(--font-mono); font-size: 12px; color: var(--muted); min-width: 220px; letter-spacing: 0.08em; }
+.theme-pill {
+  font-size: 12px; padding: 4px 10px; border-radius: 20px;
+  border: 1px solid var(--border); color: var(--muted);
+  font-family: var(--font-mono); white-space: nowrap;
+}
+.theme-pill.amber { border-color: var(--amber-dim); color: var(--amber); background: rgba(232,177,76,0.08); }
+.theme-pill.teal { border-color: var(--teal-dim); color: var(--teal); background: rgba(91,194,168,0.07); }
+.theme-pill.bad { border-color: rgba(194,107,91,0.4); color: var(--bad); background: rgba(194,107,91,0.07); }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- HEADER                                                        -->
+<!-- ============================================================ -->
+<div class="header">
+  <div class="eyebrow">Storyboard · Presentation Flow</div>
+  <h1>Things I learned building a <span>local-only agentic AI system</span>.</h1>
+  <div class="meta">
+    <span><strong>Amar Chheda</strong> · Machine Learning Engineer</span>
+    <span><strong>37 slides</strong> across 6 acts + interlude</span>
+    <span><strong>5 new</strong> "What Actually Broke" slides added (1 bridge + 4 failure stories)</span>
+    <span><strong>~35–45 min</strong> talk</span>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- LEGEND                                                        -->
+<!-- ============================================================ -->
+<div class="legend">
+  <span style="font-size: 13px; color: var(--muted); margin-right: 8px;">Card type:</span>
+  <div class="legend-item"><div class="legend-dot" style="background: var(--surface); border: 1px solid var(--border);"></div>Standard slide</div>
+  <div class="legend-item"><div class="legend-dot" style="background: rgba(232,177,76,0.15); border: 1px solid rgba(232,177,76,0.3);"></div>Key lesson / takeaway</div>
+  <div class="legend-item"><div class="legend-dot" style="background: rgba(91,194,168,0.10); border: 1px solid rgba(91,194,168,0.3);"></div>Technical deep-dive</div>
+  <div class="legend-item"><div class="legend-dot" style="background: rgba(194,107,91,0.10); border: 1px solid rgba(194,107,91,0.35);"></div>Failure / what broke (NEW)</div>
+  <div class="legend-item" style="margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--bad);">NEW = slides added this session</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- NARRATIVE ARC                                                 -->
+<!-- ============================================================ -->
+<div style="padding: 36px 60px 0;">
+  <div class="arc-strip">
+    <h2>Narrative Arc</h2>
+    <div class="arc-flow">
+      <div class="arc-node">
+        <div class="circle" style="background: rgba(140,106,46,0.20); border: 2px solid var(--amber-dim); color: var(--amber);">1</div>
+        <div class="label">The world I came from</div>
+      </div>
+      <div class="arc-arrow">→</div>
+      <div class="arc-node">
+        <div class="circle" style="background: rgba(140,106,46,0.20); border: 2px solid var(--amber-dim); color: var(--amber);">2</div>
+        <div class="label">The paradigm shift</div>
+      </div>
+      <div class="arc-arrow">→</div>
+      <div class="arc-node">
+        <div class="circle" style="background: rgba(91,194,168,0.12); border: 2px solid var(--teal-dim); color: var(--teal);">3</div>
+        <div class="label">Why small language models?</div>
+      </div>
+      <div class="arc-arrow">→</div>
+      <div class="arc-node">
+        <div class="circle" style="background: rgba(140,106,46,0.20); border: 2px solid var(--amber-dim); color: var(--amber);">4</div>
+        <div class="label">What I built — Superbrain</div>
+      </div>
+      <div class="arc-arrow">→</div>
+      <div class="arc-node">
+        <div class="circle" style="background: rgba(194,107,91,0.12); border: 2px solid rgba(194,107,91,0.4); color: var(--bad);">4.5</div>
+        <div class="label" style="color: var(--bad);">What actually broke</div>
+      </div>
+      <div class="arc-arrow">→</div>
+      <div class="arc-node">
+        <div class="circle" style="background: rgba(91,194,168,0.12); border: 2px solid var(--teal-dim); color: var(--teal);">5</div>
+        <div class="label">Lessons learned</div>
+      </div>
+      <div class="arc-arrow">→</div>
+      <div class="arc-node">
+        <div class="circle" style="background: rgba(140,106,46,0.20); border: 2px solid var(--amber-dim); color: var(--amber);">6</div>
+        <div class="label">Takeaways + close</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- BOARD                                                         -->
+<!-- ============================================================ -->
+<div class="board">
+
+  <!-- ACT 1 -->
+  <div class="act-block">
+    <div class="act-header">
+      <div class="act-divider" style="background: var(--amber);"></div>
+      <div class="act-number">Act 01</div>
+      <div class="act-title" style="color: var(--amber);">The World I Came From</div>
+      <div class="act-count">Slides 01–04 · 4 slides</div>
+    </div>
+    <div class="slides-grid">
+      <div class="slide-card amber-card">
+        <div class="slide-num">01 · TITLE</div>
+        <div class="slide-title">Things I learned building a local-only agentic AI system.</div>
+        <div class="slide-key">Split visual: old pipeline vs. foggy markdown/instructions world. The before/after in one image.</div>
+        <div class="slide-tag journey">hook</div>
+      </div>
+      <div class="slide-card">
+        <div class="slide-num">02 · FOUNDATION</div>
+        <div class="slide-title">The world I came from.</div>
+        <div class="slide-key">Train. Measure. Ship. Deterministic by design. You own the math.</div>
+        <div class="slide-tag">context</div>
+      </div>
+      <div class="slide-card">
+        <div class="slide-num">03 · RESPONSIBILITY</div>
+        <div class="slide-title">Accuracy was my responsibility.</div>
+        <div class="slide-key">Fine-tuned specialist models. Data curation. F1 on a holdout set. You built what you owned.</div>
+        <div class="slide-tag">context</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">04 · THE SHIFT</div>
+        <div class="slide-title">Then the world handed us foundation models.</div>
+        <div class="slide-key">"The benchmarks say it's great — but does it work for <em>your</em> task?" — the question I couldn't answer.</div>
+        <div class="slide-tag lesson">tension</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACT 2 -->
+  <div class="act-block">
+    <div class="act-header">
+      <div class="act-divider" style="background: var(--amber);"></div>
+      <div class="act-number">Act 02</div>
+      <div class="act-title" style="color: var(--amber);">The Paradigm Shift</div>
+      <div class="act-count">Slides 05–09 · 5 slides</div>
+    </div>
+    <div class="slides-grid">
+      <div class="slide-card">
+        <div class="slide-num">05 · AGENTIC</div>
+        <div class="slide-title">Agentic AI isn't a chatbot — it's orchestrated decision-making.</div>
+        <div class="slide-key">The model is not the product. The workflow is the product. Closer to distributed systems than data science.</div>
+        <div class="slide-tag lesson">reframe</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">06 · RESPONSIBILITY</div>
+        <div class="slide-title">Foundation models shifted the responsibility — they didn't eliminate it.</div>
+        <div class="slide-key">Old: accuracy at model level. New: accuracy at system level. Prompt design, retrieval, validation.</div>
+        <div class="slide-tag lesson">key insight</div>
+      </div>
+      <div class="slide-card teal-card">
+        <div class="slide-num">07 · TRAINING</div>
+        <div class="slide-title">How small language models get made.</div>
+        <div class="slide-key">Distillation → pruning → quantization → LoRA. The funnel from 70B to 3.8B.</div>
+        <div class="slide-tag tech">technical</div>
+      </div>
+      <div class="slide-card">
+        <div class="slide-num">08 · GENERALIST/SPECIALIST</div>
+        <div class="slide-title">Generalist or specialist? Both. Route.</div>
+        <div class="slide-key">LLMs for open-ended reasoning. SLMs for classification, extraction, routing. Don't pick — orchestrate.</div>
+        <div class="slide-tag">model selection</div>
+      </div>
+      <div class="slide-card teal-card">
+        <div class="slide-num">09 · LATENCY</div>
+        <div class="slide-title">Latency is a system design constraint — not UX.</div>
+        <div class="slide-key">phi3:mini classification: 0.5–1.5s. llama3.1:8b generation: 4–12s. Latency compounds in agentic loops.</div>
+        <div class="slide-tag tech">latency table</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACT 3 -->
+  <div class="act-block">
+    <div class="act-header">
+      <div class="act-divider" style="background: var(--teal);"></div>
+      <div class="act-number">Act 03</div>
+      <div class="act-title" style="color: var(--teal);">Why Small Language Models?</div>
+      <div class="act-count">Slides 10–16 · 7 slides</div>
+    </div>
+    <div class="slides-grid">
+      <div class="slide-card">
+        <div class="slide-num">10 · WHY SLMs</div>
+        <div class="slide-title">Why I chose small, local models.</div>
+        <div class="slide-key">Privacy · Cost · Forcing function · Observability. The four reasons.</div>
+        <div class="slide-tag">overview</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">11 · COST</div>
+        <div class="slide-title">What running LLMs actually costs.</div>
+        <div class="slide-key">GPT-4o: $7,500+/mo at 1K articles/day. llama3.1:8b local: ~$12 (electricity). Enterprise LLM: $500K–2M/yr.</div>
+        <div class="slide-tag lesson">numbers</div>
+      </div>
+      <div class="slide-card teal-card">
+        <div class="slide-num">12 · NVIDIA PAPER</div>
+        <div class="slide-title">NVIDIA's case: SLMs are the future of agentic AI.</div>
+        <div class="slide-key">Berkeley Function Calling Leaderboard. SLMs match LLMs on agentic tasks. arXiv:2506.02153.</div>
+        <div class="slide-tag tech">research</div>
+      </div>
+      <div class="slide-card">
+        <div class="slide-num">13 · OPEN-WEIGHTS</div>
+        <div class="slide-title">The open-weights moment.</div>
+        <div class="slide-key">Llama 2 → Mistral → Phi-3 mini → Llama 3.1 → Phi-4. The timeline that made Superbrain possible.</div>
+        <div class="slide-tag journey">timeline</div>
+      </div>
+      <div class="slide-card">
+        <div class="slide-num">14 · BALANCE</div>
+        <div class="slide-title">SLMs and LLMs — orchestrated.</div>
+        <div class="slide-key">Orchestra metaphor. Gartner: 3× task-specific model adoption vs LLMs by 2027.</div>
+        <div class="slide-tag">architecture</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">15 · FORCING FUNCTION</div>
+        <div class="slide-title">Small models force better system design.</div>
+        <div class="slide-key">Precise prompts · Explicit boundaries · Validated output · Engineered fallbacks. Before/after examples.</div>
+        <div class="slide-tag lesson">core insight</div>
+      </div>
+      <div class="slide-card">
+        <div class="slide-num">16 · DIVISION OF LABOUR</div>
+        <div class="slide-title">Division of labour.</div>
+        <div class="slide-key">90% cost reduction on repetitive tasks. "How do I route and compose multiple model sizes?" — InfoWorld 2024.</div>
+        <div class="slide-tag">enterprise</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACT 4 -->
+  <div class="act-block">
+    <div class="act-header">
+      <div class="act-divider" style="background: var(--amber);"></div>
+      <div class="act-number">Act 04</div>
+      <div class="act-title" style="color: var(--amber);">What I Built — Superbrain</div>
+      <div class="act-count">Slides 17–22 · 6 slides</div>
+    </div>
+    <div class="slides-grid">
+      <div class="slide-card teal-card">
+        <div class="slide-num">17 · SYSTEM</div>
+        <div class="slide-title">Superbrain at a glance.</div>
+        <div class="slide-key">Entry: API/Bot/CLI. Core: ingestion/classify/QA/digest. Storage: Postgres + pgvector. Three local models. Zero cloud AI.</div>
+        <div class="slide-tag tech">architecture</div>
+      </div>
+      <div class="slide-card teal-card">
+        <div class="slide-num">18 · MODELS</div>
+        <div class="slide-title">Three local models. Four agentic roles.</div>
+        <div class="slide-key">llama3.1:8b (QA + chunk + digest) · phi3:mini (classify, 4× faster) · nomic-embed-text (768-dim).</div>
+        <div class="slide-tag tech">model table</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">19 · CHUNKING AGENT</div>
+        <div class="slide-title">The chunking strategy agent.</div>
+        <div class="slide-key">LLM chooses: semantic / recursive / fixed. JSON output. Deterministic fallback to "fixed" on any failure.</div>
+        <div class="slide-tag lesson">agent pattern</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">20 · CLASSIFICATION</div>
+        <div class="slide-title">Classification by integer index — hallucination prevention by design.</div>
+        <div class="slide-key">Topics as integers [1][2][3], not UUIDs. Unknown IDs silently dropped. Bad confidence → coerced to "low".</div>
+        <div class="slide-tag lesson">hallucination guard</div>
+      </div>
+      <div class="slide-card teal-card">
+        <div class="slide-num">21 · QA PIPELINE</div>
+        <div class="slide-title">Grounded QA with evidence gating.</div>
+        <div class="slide-key">Evidence gate: ≥2 chunks AND RRF score ≥ 0.005. SOURCES line. Chunk ID validation vs evidence set.</div>
+        <div class="slide-tag tech">pipeline</div>
+      </div>
+      <div class="slide-card teal-card">
+        <div class="slide-num">22 · RRF</div>
+        <div class="slide-title">Reciprocal rank fusion.</div>
+        <div class="slide-key">score = Σ 1/(60+rank). Vector + BM25, one Postgres. No separate vector DB.</div>
+        <div class="slide-tag tech">algorithm</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACT 4.5 — NEW SECTION -->
+  <div class="act-block">
+    <div class="act-header">
+      <div class="act-divider" style="background: var(--bad);"></div>
+      <div class="act-number" style="color: var(--bad);">Act 04.5</div>
+      <div class="act-title" style="color: var(--bad);">What Actually Broke — The Honest Part</div>
+      <div class="act-count">Slides 22-BRIDGE–22D · 5 slides · <span style="color: var(--bad);">ALL NEW</span></div>
+    </div>
+    <div class="slides-grid">
+      <div class="slide-card bad-card new-card" style="border-color: rgba(194,107,91,0.6); background: rgba(194,107,91,0.10);">
+        <div class="slide-num">22-BRIDGE · INTERLUDE</div>
+        <div class="slide-title">Let me tell you about the things that broke.</div>
+        <div class="slide-key">Bold typographic transition. Previews all 4 failure stories as cards. Sets emotional register: "failures are more educational than successes."</div>
+        <div class="slide-tag failure">transition · tone-setter</div>
+      </div>
+      <div class="slide-card bad-card new-card">
+        <div class="slide-num">22A · LFM STORY</div>
+        <div class="slide-title">The model we planned to use wasn't ready.</div>
+        <div class="slide-key">LFM2-7B was the planned digest model. Wasn't stable in Ollama. Still a comment in the codebase: "swap to lfm2-7b when available."</div>
+        <div class="slide-tag failure">model availability</div>
+      </div>
+      <div class="slide-card bad-card new-card">
+        <div class="slide-num">22B · STRUCTURED OUTPUT</div>
+        <div class="slide-title">When phi3:mini talked back.</div>
+        <div class="slide-key">"very_high" confidence. Markdown fences wrapping JSON. {"matches": [...]} object wrapper. Three defensive fixes required.</div>
+        <div class="slide-tag failure">structured output</div>
+      </div>
+      <div class="slide-card bad-card new-card">
+        <div class="slide-num">22C · ASYNC LIFECYCLE</div>
+        <div class="slide-title">The session that wouldn't stay open.</div>
+        <div class="slide-key">APScheduler + SQLAlchemy async. Three failed attempts. Final: closure in main.py with fresh session per execution.</div>
+        <div class="slide-tag failure">async bug</div>
+      </div>
+      <div class="slide-card bad-card new-card">
+        <div class="slide-num">22D · GPT-4O TRAP</div>
+        <div class="slide-title">GPT-4o taught us the wrong architecture.</div>
+        <div class="slide-key">GPT-4o spike "just worked." Switched to llama3.1:8b → hallucinated IDs, thin-evidence answers. Forced: evidence gate + SOURCES + ID validation.</div>
+        <div class="slide-tag failure">architecture gap</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACT 5 -->
+  <div class="act-block">
+    <div class="act-header">
+      <div class="act-divider" style="background: var(--teal);"></div>
+      <div class="act-number">Act 05</div>
+      <div class="act-title" style="color: var(--teal);">Lessons Learned</div>
+      <div class="act-count">Slides 23–28 · 6 slides</div>
+    </div>
+    <div class="slides-grid">
+      <div class="slide-card amber-card">
+        <div class="slide-num">23 · LESSON 01</div>
+        <div class="slide-title">Agentic AI is orchestration, not autonomy.</div>
+        <div class="slide-key">Dream: one LLM, endless arrows. Reality: directed graph of bounded steps with explicit error paths.</div>
+        <div class="slide-tag lesson">lesson 1</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">24 · LESSON 02</div>
+        <div class="slide-title">The prompt is the contract.</div>
+        <div class="slide-key">Every prompt: role + task + output schema + what to do if you can't. Before/after comparison.</div>
+        <div class="slide-tag lesson">lesson 2</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">25 · LESSON 03</div>
+        <div class="slide-title">Constraints are features in disguise.</div>
+        <div class="slide-key">"If your system only works with a powerful model, you haven't built a system — you've built a prompt."</div>
+        <div class="slide-tag lesson">lesson 3 · key quote</div>
+      </div>
+      <div class="slide-card teal-card">
+        <div class="slide-num">26 · LESSON 04</div>
+        <div class="slide-title">Observability is not optional.</div>
+        <div class="slide-key">Every LLM call logged. p50/p95/p99 metrics. Eval harness: recall@k, citation presence, groundedness.</div>
+        <div class="slide-tag tech">lesson 4 · metrics</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">27 · LESSON 05</div>
+        <div class="slide-title">Retrieval quality is answer quality.</div>
+        <div class="slide-key">80% of QA improvement budget → retrieval. Hybrid + RRF + per-chunk embeddings. Generator is the easy part.</div>
+        <div class="slide-tag lesson">lesson 5 · 80%</div>
+      </div>
+      <div class="slide-card">
+        <div class="slide-num">28 · LESSON 06</div>
+        <div class="slide-title">Local-only changes the design space.</div>
+        <div class="slide-key">Privacy is a feature. Air-gapped environments. No rate limits. No per-token bill. Compliance without footnotes.</div>
+        <div class="slide-tag">lesson 6</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACT 6 -->
+  <div class="act-block">
+    <div class="act-header">
+      <div class="act-divider" style="background: var(--amber);"></div>
+      <div class="act-number">Act 06</div>
+      <div class="act-title" style="color: var(--amber);">Takeaways + Close</div>
+      <div class="act-count">Slides 29–32 · 4 slides</div>
+    </div>
+    <div class="slides-grid">
+      <div class="slide-card teal-card">
+        <div class="slide-num">29 · MENTAL MODEL</div>
+        <div class="slide-title">A mental model for local-first agentic AI.</div>
+        <div class="slide-key">5-layer stack: Entry → Orchestration → LLM calls → Retrieval → Storage. One responsibility per layer.</div>
+        <div class="slide-tag tech">model</div>
+      </div>
+      <div class="slide-card">
+        <div class="slide-num">30 · CHECKLIST</div>
+        <div class="slide-title">LLM or SLM — a checklist.</div>
+        <div class="slide-key">Repetitive/structured/fast → SLM. Reasoning/creative → LLM. Combining both → always orchestrate.</div>
+        <div class="slide-tag">decision framework</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">31 · THREE THINGS</div>
+        <div class="slide-title">Three things I'd tell past me.</div>
+        <div class="slide-key">Design prompts before code. Pick smallest model that works. Build eval harness FIRST, not last.</div>
+        <div class="slide-tag lesson">memorable</div>
+      </div>
+      <div class="slide-card amber-card">
+        <div class="slide-num">32 · CLOSE</div>
+        <div class="slide-title">Agentic AI is still engineering. It just has different seams.</div>
+        <div class="slide-key">Final quote. Resources: Superbrain repo, arXiv:2506.02153, InfoWorld, ollama.ai. Q&amp;A.</div>
+        <div class="slide-tag lesson">closer</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /board -->
+
+<!-- ============================================================ -->
+<!-- THEME THREADS                                                 -->
+<!-- ============================================================ -->
+<div class="themes" style="border-top: 1px solid var(--border); padding-top: 40px;">
+  <h2>Recurring Themes — tracked across the deck</h2>
+
+  <div class="theme-row">
+    <div class="label">The forcing function thread</div>
+    <div class="theme-pill amber">Slide 15 · "forcing function"</div>
+    <div class="theme-pill amber">Slide 19 · "fallback or fix"</div>
+    <div class="theme-pill amber">Slide 22B · "phi3 talked back"</div>
+    <div class="theme-pill amber">Slide 25 · "constraints are features"</div>
+  </div>
+
+  <div class="theme-row">
+    <div class="label">Hallucination prevention thread</div>
+    <div class="theme-pill teal">Slide 20 · integer indexing</div>
+    <div class="theme-pill teal">Slide 21 · evidence gate</div>
+    <div class="theme-pill teal">Slide 21 · chunk ID validation</div>
+    <div class="theme-pill teal">Slide 22D · GPT-4o gap exposed</div>
+  </div>
+
+  <div class="theme-row">
+    <div class="label">Responsibility / ownership thread</div>
+    <div class="theme-pill">Slide 03 · ML accuracy = yours</div>
+    <div class="theme-pill">Slide 06 · shifted, not gone</div>
+    <div class="theme-pill">Slide 24 · prompt is the contract</div>
+    <div class="theme-pill">Slide 22B · model wasn't broken</div>
+  </div>
+
+  <div class="theme-row">
+    <div class="label">Model availability / selection thread</div>
+    <div class="theme-pill bad">Slide 22A · LFM wasn't ready</div>
+    <div class="theme-pill bad">Slide 18 · phi3:mini 4× faster</div>
+    <div class="theme-pill bad">Slide 30 · checklist</div>
+    <div class="theme-pill bad">Slide 31 · smallest that works</div>
+  </div>
+
+  <div class="theme-row">
+    <div class="label">Async / infrastructure thread</div>
+    <div class="theme-pill">Slide 22C · session lifecycle</div>
+    <div class="theme-pill">Slide 26 · observability</div>
+    <div class="theme-pill">Slide 17 · one Postgres, no extra DB</div>
+    <div class="theme-pill">Slide 22 · RRF in Postgres</div>
+  </div>
+
+  <div class="theme-row">
+    <div class="label">Cost / privacy thread</div>
+    <div class="theme-pill teal">Slide 11 · cost numbers</div>
+    <div class="theme-pill teal">Slide 10 · four reasons</div>
+    <div class="theme-pill teal">Slide 28 · privacy is a feature</div>
+    <div class="theme-pill teal">Slide 16 · 90% reduction</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TALK PACING GUIDE                                             -->
+<!-- ============================================================ -->
+<div style="margin: 0 60px 80px; padding: 32px 36px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px;">
+  <h2 style="margin: 0 0 20px; font-size: 14px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);">Suggested Pacing · 40-minute talk</h2>
+  <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; font-size: 12px;">
+    <div style="padding: 14px 16px; background: rgba(232,177,76,0.08); border: 1px solid var(--amber-dim); border-radius: 8px;">
+      <div style="font-family: var(--font-mono); color: var(--amber); margin-bottom: 4px; font-size: 11px; letter-spacing: 0.1em;">ACT 1</div>
+      <div style="font-weight: 600; margin-bottom: 4px;">The old world</div>
+      <div style="color: var(--muted);">4 slides · ~4 min</div>
+    </div>
+    <div style="padding: 14px 16px; background: rgba(232,177,76,0.08); border: 1px solid var(--amber-dim); border-radius: 8px;">
+      <div style="font-family: var(--font-mono); color: var(--amber); margin-bottom: 4px; font-size: 11px; letter-spacing: 0.1em;">ACT 2</div>
+      <div style="font-weight: 600; margin-bottom: 4px;">Paradigm shift</div>
+      <div style="color: var(--muted);">5 slides · ~5 min</div>
+    </div>
+    <div style="padding: 14px 16px; background: rgba(91,194,168,0.08); border: 1px solid var(--teal-dim); border-radius: 8px;">
+      <div style="font-family: var(--font-mono); color: var(--teal); margin-bottom: 4px; font-size: 11px; letter-spacing: 0.1em;">ACT 3</div>
+      <div style="font-weight: 600; margin-bottom: 4px;">Why SLMs?</div>
+      <div style="color: var(--muted);">7 slides · ~7 min</div>
+    </div>
+    <div style="padding: 14px 16px; background: rgba(232,177,76,0.08); border: 1px solid var(--amber-dim); border-radius: 8px;">
+      <div style="font-family: var(--font-mono); color: var(--amber); margin-bottom: 4px; font-size: 11px; letter-spacing: 0.1em;">ACT 4</div>
+      <div style="font-weight: 600; margin-bottom: 4px;">Superbrain</div>
+      <div style="color: var(--muted);">6 slides · ~6 min</div>
+    </div>
+    <div style="padding: 14px 16px; background: rgba(194,107,91,0.08); border: 1px solid rgba(194,107,91,0.35); border-radius: 8px;">
+      <div style="font-family: var(--font-mono); color: var(--bad); margin-bottom: 4px; font-size: 11px; letter-spacing: 0.1em;">ACT 4.5 NEW</div>
+      <div style="font-weight: 600; margin-bottom: 4px;">What broke</div>
+      <div style="color: var(--muted);">5 slides · ~7 min</div>
+    </div>
+    <div style="padding: 14px 16px; background: rgba(91,194,168,0.08); border: 1px solid var(--teal-dim); border-radius: 8px;">
+      <div style="font-family: var(--font-mono); color: var(--teal); margin-bottom: 4px; font-size: 11px; letter-spacing: 0.1em;">ACT 5</div>
+      <div style="font-weight: 600; margin-bottom: 4px;">Lessons</div>
+      <div style="color: var(--muted);">6 slides · ~7 min</div>
+    </div>
+    <div style="padding: 14px 16px; background: rgba(232,177,76,0.08); border: 1px solid var(--amber-dim); border-radius: 8px;">
+      <div style="font-family: var(--font-mono); color: var(--amber); margin-bottom: 4px; font-size: 11px; letter-spacing: 0.1em;">ACT 6</div>
+      <div style="font-weight: 600; margin-bottom: 4px;">Takeaways</div>
+      <div style="color: var(--muted);">4 slides · ~5 min</div>
+    </div>
+  </div>
+  <div style="margin-top: 16px; font-size: 12px; color: var(--dim); font-family: var(--font-mono);">Total: 37 slides · ~42 min · leaves ~8 min Q&amp;A in a 50-min slot. Trim Act 3 (slides 13–14), Act 6 (slide 30), or compress two failure stories into one if running short.</div>
+</div>
+
+</body>
+</html>
