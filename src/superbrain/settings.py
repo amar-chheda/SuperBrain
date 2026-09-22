@@ -7,6 +7,7 @@ or from a .env file. Settings are loaded once and cached via lru_cache.
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,10 +15,13 @@ class Settings(BaseSettings):
     """Typed application configuration.
 
     All fields map to SUPERBRAIN_<FIELD_NAME> environment variables.
+
+    Secret fields use SecretStr so they never render in logs, tracebacks, or
+    repr() — call .get_secret_value() at the point of actual use only.
     """
 
     # Database
-    database_url: str
+    database_url: SecretStr
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
@@ -46,12 +50,12 @@ class Settings(BaseSettings):
 
     # Crawler
     crawler_backend: Literal["spider", "httpx"] = "httpx"
-    spider_api_key: str | None = None
+    spider_api_key: SecretStr | None = None
 
     # Telegram
-    telegram_bot_token: str | None = None
+    telegram_bot_token: SecretStr | None = None
     telegram_webhook_url: str | None = None
-    ngrok_authtoken: str | None = None
+    ngrok_authtoken: SecretStr | None = None
 
     # API (used by CLI)
     api_base_url: str = "http://localhost:8000"

@@ -155,6 +155,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks) 
     settings = get_settings()
     if not settings.telegram_bot_token:
         return JSONResponse(status_code=200, content={"ok": True})
+    bot_token = settings.telegram_bot_token.get_secret_value()
 
     try:
         body = await request.json()
@@ -191,7 +192,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks) 
                 _telegram_ingest_background,
                 job.id,
                 chat_id,
-                settings.telegram_bot_token,
+                bot_token,
                 request,
             )
             log.info("bot.job_created", job_id=str(job.id), source="telegram")
@@ -209,7 +210,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks) 
                 _telegram_qa_background,
                 question,
                 chat_id,
-                settings.telegram_bot_token,
+                bot_token,
                 request,
             )
             reply = f'Thinking about "{question}"...'
@@ -217,7 +218,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks) 
     else:
         reply = "Send me an https URL to ingest."
 
-    await _send_reply(settings.telegram_bot_token, chat_id, reply)
+    await _send_reply(bot_token, chat_id, reply)
     return JSONResponse(status_code=200, content={"ok": True})
 
 

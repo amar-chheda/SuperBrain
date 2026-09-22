@@ -30,7 +30,7 @@ async def start(settings: Settings, port: int = 8000) -> str | None:
         public_url = _open_tunnel(settings, port)
 
     if public_url:
-        await _register_webhook(settings.telegram_bot_token, public_url)
+        await _register_webhook(settings.telegram_bot_token.get_secret_value(), public_url)
 
     return public_url
 
@@ -46,7 +46,7 @@ def stop() -> None:
 def _open_tunnel(settings: Settings, port: int) -> str | None:
     try:
         if settings.ngrok_authtoken:
-            conf.get_default().auth_token = settings.ngrok_authtoken
+            conf.get_default().auth_token = settings.ngrok_authtoken.get_secret_value()
 
         # Check if any ngrok process (managed or external) already has a tunnel
         # for this port by querying the ngrok local REST API directly.

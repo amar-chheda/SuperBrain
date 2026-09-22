@@ -35,7 +35,8 @@ class SpiderCrawler(CrawlerPort):
             settings: Application settings (reads spider_api_key).
             http_client: Shared async httpx client for the API call.
         """
-        self._api_key = settings.spider_api_key
+        key = settings.spider_api_key
+        self._api_key = key.get_secret_value() if key else None
         self._client = http_client
 
     async def fetch(self, url: str) -> CrawlResult:

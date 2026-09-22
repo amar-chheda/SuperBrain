@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         Nothing — control passes to the running application.
     """
     settings = get_settings()
-    init_engine(settings.database_url)
+    init_engine(settings.database_url.get_secret_value())
 
     # Download NLTK punkt tokenizer data if not already present
     nltk.download("punkt", quiet=True)
@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     log.info(
         "superbrain.startup",
-        database_url=settings.database_url.split("@")[-1],
+        database_url=settings.database_url.get_secret_value().split("@")[-1],
         crawler_backend=settings.crawler_backend,
         embedding_model=settings.ollama_embedding_model,
         qa_model=settings.ollama_qa_model,
