@@ -1,32 +1,44 @@
 """Grounded answer generation using retrieved evidence chunks."""
 
+from __future__ import annotations
+
+import asyncio
 import re
 from uuid import UUID
 
+import dspy
 import structlog
 
 from superbrain.app.application.ports import LLMPort
 from superbrain.app.application.qa.evidence_builder import Evidence
+from superbrain.app.infrastructure.llm.dspy_lm import LLMPortLM
 
 log = structlog.get_logger(__name__)
 
-GROUNDED_QA_PROMPT = """You are a question-answering assistant. Answer using ONLY the numbered evidence below.
+_CITATION_RE = re.compile(r"\[(\d+)\]")
 
-QUESTION:
-{question}
-{format_block}
-EVIDENCE:
-{evidence_block}
 
-RULES:
-- Cite sources inline using their number, like [1] or [2], immediately after the sentence that uses that source.
-- Use ONLY information present in the evidence above. No outside knowledge.
-- If the evidence does not contain enough information, say exactly: "I cannot answer this question based on the available evidence."
-- {length_rule}
-- End your response with a SOURCES line listing only the numbers you cited, like:
-  SOURCES: 1, 2
+class _GroundedQA(dspy.Signature):
+    """Answer using ONLY the numbered evidence below.
 
-Begin your answer now:"""
+    Cite sources inline using their number, like [1] or [2], immediately after the
+    sentence that uses that source. Use ONLY information present in the evidence —
+    no outside knowledge. If the evidence does not contain enough information, say
+    exactly: "I cannot answer this question based on the available evidence."
+    """
+
+    question: str = dspy.InputField()
+    evidence: str = dspy.InputField(desc="numbered evidence passages, [1], [2], ...")
+    format_directives: str = dspy.InputField(
+        desc="how to shape the answer's length/format — never changes what counts as evidence"
+    )
+    answer: str = dspy.OutputField(
+        desc="the grounded answer, with inline [n] citations right after each sentence "
+        "that uses source n"
+    )
+
+
+_answer_question = dspy.Predict(_GroundedQA)
 
 
 def format_evidence_block(evidence: list[Evidence]) -> str:
@@ -53,52 +65,34 @@ async def generate_answer(
     what counts as evidence.
     """
     directives = (answer_directives or "").strip()
-    if directives:
-        format_block = (
-            "\nFORMATTING REQUEST (how to shape the answer — does NOT change what "
-            f"counts as evidence):\n{directives}\n"
-        )
-        length_rule = (
-            "Shape the answer per the FORMATTING REQUEST above, staying grounded in "
-            "the evidence."
-        )
-    else:
-        format_block = ""
-        length_rule = "Keep your answer concise — 2 to 5 sentences unless more detail is needed."
-
-    prompt = GROUNDED_QA_PROMPT.format(
-        question=question,
-        format_block=format_block,
-        evidence_block=format_evidence_block(evidence),
-        length_rule=length_rule,
+    format_directives = directives or (
+        "Keep your answer concise — 2 to 5 sentences unless more detail is needed."
     )
-    raw = await llm.complete(prompt, model=model, prompt_template="grounded_qa_v1")
-    answer_text, cited_pairs = parse_answer_response(raw, evidence)
-    return answer_text, cited_pairs, prompt
+
+    stage_lm = LLMPortLM(llm, model=model, prompt_template="grounded_qa_v1")
+    with dspy.context(lm=stage_lm, adapter=dspy.JSONAdapter()):
+        result = await asyncio.to_thread(
+            _answer_question,
+            question=question,
+            evidence=format_evidence_block(evidence),
+            format_directives=format_directives,
+        )
+    answer_text, cited_pairs = parse_answer_response(result.answer, evidence)
+    return answer_text, cited_pairs, stage_lm.last_prompt or ""
 
 
 def parse_answer_response(
-    raw: str, evidence: list[Evidence]
+    answer: str, evidence: list[Evidence]
 ) -> tuple[str, list[tuple[int, UUID]]]:
-    """Split model output into answer text and (citation_number, chunk_id) pairs.
+    """Extract (citation_number, chunk_id) pairs from inline [n] citations in the answer.
 
-    Numbers in SOURCES map to 1-based indices into the evidence list.
+    Numbers map to 1-based indices into the evidence list, in first-appearance order.
     Out-of-range numbers are logged and dropped.
     """
-    parts = re.split(r"\nSOURCES:\s*", raw, maxsplit=1)
-    answer_text = parts[0].strip()
-
-    if len(parts) < 2:
-        log.warning("qa.missing_sources_line", raw=raw[:200])
-        return answer_text, []
-
     cited_pairs: list[tuple[int, UUID]] = []
     seen: set[int] = set()
-    for token in re.split(r"[\s,]+", parts[1].strip()):
-        token = token.strip("[].,")
-        if not token.isdigit():
-            continue
-        n = int(token)
+    for match in _CITATION_RE.finditer(answer):
+        n = int(match.group(1))
         if n < 1 or n > len(evidence):
             log.warning("qa.citation_out_of_range", number=n, evidence_count=len(evidence))
             continue
@@ -106,4 +100,4 @@ def parse_answer_response(
             seen.add(n)
             cited_pairs.append((n, evidence[n - 1].chunk_id))
 
-    return answer_text, cited_pairs
+    return answer.strip(), cited_pairs

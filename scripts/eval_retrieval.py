@@ -56,7 +56,7 @@ T_B_GRID = [round(0.00 + 0.02 * i, 2) for i in range(11)]  # 0.00 .. 0.20
 async def _generate_template(out: Path, limit: int) -> None:
     """Dump recent query_logs questions as an unlabeled template for hand-labeling."""
     settings = get_settings()
-    init_engine(settings.database_url)
+    init_engine(settings.database_url.get_secret_value())
     async with get_session_factory()() as session:
         rows = (
             await session.execute(
@@ -90,7 +90,7 @@ async def _generate_template(out: Path, limit: int) -> None:
 async def _gather(eval_set: list[dict], top_k: int) -> list[dict]:
     """Run retrieval once per labeled question and record gate scores."""
     settings = get_settings()
-    init_engine(settings.database_url)
+    init_engine(settings.database_url.get_secret_value())
     session_factory = get_session_factory()
     results: list[dict] = []
 

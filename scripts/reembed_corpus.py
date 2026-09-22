@@ -42,7 +42,7 @@ def _vector_literal(embedding: list[float]) -> str:
 
 async def reembed(batch_size: int, limit: int | None, dry_run: bool) -> None:
     settings = get_settings()
-    init_engine(settings.database_url)
+    init_engine(settings.database_url.get_secret_value())
     session_factory = get_session_factory()
 
     async with httpx.AsyncClient() as http_client:

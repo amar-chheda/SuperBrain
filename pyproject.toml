@@ -24,6 +24,7 @@ dependencies = [
     "pgvector>=0.3",
     "apscheduler>=3.10",
     "pyngrok>=8.1.2",
+    "dspy>=3.3.0",
 ]
 
 [dependency-groups]
@@ -51,7 +52,6 @@ select = ["E", "F", "I", "UP"]
 [tool.ruff.lint.per-file-ignores]
 "**/chunking_agent.py" = ["E501"]
 "**/query_analysis.py" = ["E501"]  # long prompt template strings
-"**/reranker.py" = ["E501"]  # long prompt template strings
 
 [project.scripts]
 superbrain = "superbrain.app.cli.commands:app"

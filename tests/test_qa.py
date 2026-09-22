@@ -38,23 +38,23 @@ def _chunk(chunk_id: UUID, url: str = "https://example.com") -> RankedChunk:
 
 
 def test_parse_answer_response_valid():
-    # SOURCES uses 1-based integer indices into the evidence list (see GROUNDED_QA_PROMPT).
+    # Citation numbers are 1-based indices into the evidence list, cited inline as [n].
     chunk_id = UUID("bbbbbbbb-0000-0000-0000-000000000001")
     evidence = [_evidence(chunk_id)]
-    raw = "The answer is X.\nSOURCES: 1"
+    raw = "The answer is X. [1]"
     answer, cited = parse_answer_response(raw, evidence)
-    assert answer == "The answer is X."
+    assert answer == "The answer is X. [1]"
     assert (1, chunk_id) in cited
 
 
-def test_parse_answer_response_rejects_hallucinated_source():
+def test_parse_answer_response_rejects_out_of_range_citation():
     evidence = [_evidence(UUID("bbbbbbbb-0000-0000-0000-000000000001"))]
-    raw = "The answer is X.\nSOURCES: 00000000-0000-0000-0000-000000000000"
+    raw = "The answer is X. [7]"
     answer, cited = parse_answer_response(raw, evidence)
     assert len(cited) == 0
 
 
-def test_parse_answer_response_missing_sources_line():
+def test_parse_answer_response_no_citations():
     evidence = [_evidence(UUID("bbbbbbbb-0000-0000-0000-000000000001"))]
     raw = "The answer is X."
     answer, cited = parse_answer_response(raw, evidence)

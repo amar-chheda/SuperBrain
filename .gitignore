@@ -7,3 +7,5 @@ __pycache__/
 *.py[cod]
 .DS_Store
 superbrain_prompt_pack/
+superbrain/node_modules/
+graphify-out/*
