@@ -9,33 +9,41 @@ call, producing a calibrated signal that does separate relevant from irrelevant.
 The top reranked score becomes the answer/refuse gate, and only high-scoring
 chunks are kept as evidence — so the answer model never sees the scattered
 grab-bag that produced the "simulated society" misrepresentation. On any failure
-(LLM down, unparseable output) the caller degrades to the RRF ordering.
+(LLM down, unparseable output, misaligned score count) the caller degrades to the
+RRF ordering.
 """
 
 from __future__ import annotations
 
-import json
+import asyncio
 from dataclasses import dataclass
 
+import dspy
 import structlog
 
 from superbrain.app.application.ports import LLMPort
-from superbrain.app.application.qa.query_analysis import _strip_think
 from superbrain.app.infrastructure.db.repositories.chunk_retrieval_repo import RankedChunk
+from superbrain.app.infrastructure.llm.dspy_lm import LLMPortLM
 
 log = structlog.get_logger(__name__)
 
-_PROMPT = """You judge whether each passage helps answer a question. For EACH passage, give a relevance score from 0.0 (irrelevant) to 1.0 (directly answers the question). Be strict: a passage that is merely about a RELATED topic, not the question itself, scores low (<= 0.3).
 
-QUESTION:
-{query}
+class _ScorePassages(dspy.Signature):
+    """Judge whether each passage helps answer a question.
 
-PASSAGES:
-{passages}
+    Score each from 0.0 (irrelevant) to 1.0 (directly answers the question). Be
+    strict: a passage that is merely about a RELATED topic, not the question
+    itself, scores low (<= 0.3).
+    """
 
-Respond with ONLY a JSON object mapping each passage index (as a string) to its score. Include every index. Example: {{"0": 0.9, "1": 0.15, "2": 0.6}}
+    query: str = dspy.InputField(desc="the question to judge passage relevance against")
+    passages: str = dspy.InputField(desc="numbered passages, one per line, like '[0] ...'")
+    scores: list[float] = dspy.OutputField(
+        desc="one relevance score 0.0-1.0 per passage, in the same order, same count as passages"
+    )
 
-JSON:"""
+
+_score_passages = dspy.Predict(_ScorePassages)
 
 
 @dataclass
@@ -54,29 +62,6 @@ def _passage_block(chunks: list[RankedChunk], snippet_chars: int) -> str:
     return "\n".join(lines)
 
 
-def _parse_scores(raw: str, n: int) -> list[float] | None:
-    """Strip <think>, parse the JSON map, and return n clamped scores in order."""
-    cleaned = _strip_think(raw)
-    start, end = cleaned.find("{"), cleaned.rfind("}")
-    if start == -1 or end <= start:
-        return None
-    try:
-        data = json.loads(cleaned[start : end + 1])
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    scores: list[float] = []
-    for i in range(n):
-        value = data.get(str(i), data.get(i))
-        try:
-            score = float(value)
-        except (TypeError, ValueError):
-            score = 0.0
-        scores.append(max(0.0, min(1.0, score)))
-    return scores
-
-
 async def rerank(
     llm: LLMPort,
     *,
@@ -87,21 +72,32 @@ async def rerank(
 ) -> RerankResult:
     """Score each chunk's relevance to `query` in one batched LLM call.
 
-    Returns scores aligned to `chunks`. On LLM error or unparseable output,
-    returns fell_back=True with empty scores so the caller can degrade gracefully.
+    Returns scores aligned to `chunks`. On LLM error, unparseable output, or a
+    score count that doesn't match the chunk count, returns fell_back=True with
+    empty scores so the caller can degrade gracefully.
     """
     if not chunks:
         return RerankResult(scores=[], fell_back=False)
 
-    prompt = _PROMPT.format(query=query, passages=_passage_block(chunks, snippet_chars))
+    stage_lm = LLMPortLM(llm, model=model, prompt_template="rerank_v1")
     try:
-        raw = await llm.complete(prompt, model=model, prompt_template="rerank_v1")
+        with dspy.context(lm=stage_lm, adapter=dspy.JSONAdapter()):
+            result = await asyncio.to_thread(
+                _score_passages, query=query, passages=_passage_block(chunks, snippet_chars)
+            )
     except Exception as exc:  # never break QA on a rerank failure
         log.warning("rerank.llm_failed", error=str(exc))
         return RerankResult(scores=[], fell_back=True)
 
-    scores = _parse_scores(raw, len(chunks))
-    if scores is None:
-        log.warning("rerank.parse_failed", raw=raw[:200])
+    scores = result.scores
+    if not isinstance(scores, list) or len(scores) != len(chunks):
+        log.warning("rerank.parse_failed", scores=scores)
         return RerankResult(scores=[], fell_back=True)
-    return RerankResult(scores=scores, fell_back=False)
+
+    try:
+        clamped = [max(0.0, min(1.0, float(s))) for s in scores]
+    except (TypeError, ValueError):
+        log.warning("rerank.parse_failed", scores=scores)
+        return RerankResult(scores=[], fell_back=True)
+
+    return RerankResult(scores=clamped, fell_back=False)

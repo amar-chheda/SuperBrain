@@ -2,7 +2,6 @@
 
 from superbrain.app.application.qa.query_analysis import (
     _deterministic_split,
-    _extract_json,
     analyze_query,
     detect_url,
     raw_analysis,
@@ -26,15 +25,6 @@ class _FakeLLM:
 def test_detect_url_trims_trailing_punctuation():
     assert detect_url("see https://example.com/a.html.") == "https://example.com/a.html"
     assert detect_url("no url here") is None
-
-
-def test_extract_json_strips_think_block():
-    raw = "<think>let me reason about this</think>\n{\"search_query\": \"x\", \"url\": null}"
-    assert _extract_json(raw) == {"search_query": "x", "url": None}
-
-
-def test_extract_json_returns_none_on_garbage():
-    assert _extract_json("there is no json here") is None
 
 
 def test_deterministic_split_separates_topic_from_directives():
@@ -76,7 +66,8 @@ async def test_analyze_query_rejects_hallucinated_search_query():
     # Model returns a topic with words absent from the question → use deterministic strip.
     llm = _FakeLLM(
         '{"search_query": "quantum chromodynamics lattice", '
-        '"keywords": "x", "intent": "summarize_topic", "url": null}'
+        '"keywords": "x", "answer_directives": "", "hypothetical_passage": "x", '
+        '"intent": "summarize_topic", "url": null}'
     )
     result = await analyze_query(
         llm, model="lfm2", question="tell me about model context protocol"

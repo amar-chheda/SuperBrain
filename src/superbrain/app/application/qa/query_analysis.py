@@ -18,28 +18,22 @@ question, so the pipeline never breaks and never embeds the filler.
 
 from __future__ import annotations
 
-import json
+import asyncio
 import re
 from dataclasses import dataclass
 from typing import Literal
 
+import dspy
 import structlog
 
 from superbrain.app.application.ports import LLMPort
+from superbrain.app.infrastructure.llm.dspy_lm import LLMPortLM
 
 log = structlog.get_logger(__name__)
 
 Intent = Literal["summarize_topic", "summarize_url"]
 
 _URL_RE = re.compile(r"https?://[^\s)>\]}\"']+")
-_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
-
-
-def _strip_think(raw: str) -> str:
-    cleaned = _THINK_RE.sub("", raw)
-    if "</think>" in cleaned:
-        cleaned = cleaned.rsplit("</think>", 1)[-1]
-    return cleaned
 
 # Leading carrier/filler phrases ("tell me more about", "explain", ...).
 _FILLER_RE = re.compile(
@@ -81,24 +75,32 @@ class QueryAnalysis:
     fell_back: bool = False    # True if model analysis failed and we used the deterministic strip
 
 
-_PROMPT = """You preprocess a user's question before a document search. Extract its parts and respond with ONE JSON object and nothing else.
+class _QueryDecompose(dspy.Signature):
+    """Preprocess a user's question before a document search: extract its routed parts."""
 
-USER QUESTION:
-{question}
+    question: str = dspy.InputField(desc="the raw user question, verbatim")
+    search_query: str = dspy.OutputField(
+        desc="the core topic to search for, COPIED from the question with only filler "
+        "words ('tell me about', 'explain') and answer-formatting instructions removed. "
+        "Do NOT add words that are not in the question."
+    )
+    keywords: str | list[str] = dspy.OutputField(desc="2-5 of the most important search terms from the topic")
+    answer_directives: str = dspy.OutputField(
+        desc="instructions about HOW to shape the answer (e.g. 'be detailed', 'use "
+        "bullet points', 'keep it structured'), copied from the question. Empty string if none."
+    )
+    hypothetical_passage: str = dspy.OutputField(
+        desc="a 1-2 sentence passage a relevant article might contain about the topic. "
+        "Stay on-topic; invent no specific facts, names, or numbers."
+    )
+    intent: str = dspy.OutputField(
+        desc="'summarize_url' if the question targets a specific article or link, "
+        "otherwise 'summarize_topic'"
+    )
+    url: str | None = dspy.OutputField(desc="the URL in the question if there is one, otherwise null")
 
-Rules:
-- "search_query": the core topic to search for, COPIED from the question with only filler ("tell me about", "explain") and answer-formatting instructions removed. Do NOT add words that are not in the question.
-- "keywords": 2-5 of the most important search terms from the topic.
-- "answer_directives": instructions about HOW to shape the answer (e.g. "be detailed", "use bullet points", "keep it structured"), copied from the question. Empty string if none.
-- "hypothetical_passage": a 1-2 sentence passage a relevant article might contain about the topic. Stay on-topic; invent no specific facts, names, or numbers.
-- "intent": "summarize_url" if it targets a specific article or link, otherwise "summarize_topic".
-- "url": the URL in the question if there is one, otherwise null.
 
-Example:
-question: "tell me more about the simulated society experiment — be detailed and use bullet points"
-{{"search_query": "simulated society experiment", "keywords": "simulated society experiment", "answer_directives": "be detailed; use bullet points", "hypothetical_passage": "A simulated society experiment runs many AI agents together to study emergent social behavior.", "intent": "summarize_topic", "url": null}}
-
-JSON:"""
+_decompose = dspy.Predict(_QueryDecompose)
 
 
 def detect_url(question: str) -> str | None:
@@ -158,59 +160,38 @@ def _fallback(question: str) -> QueryAnalysis:
     return analysis
 
 
-def _extract_json(raw: str) -> dict | None:
-    """Strip <think> blocks and parse the first balanced JSON object found."""
-    cleaned = _strip_think(raw)
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    try:
-        parsed = json.loads(cleaned[start : end + 1])
-        return parsed if isinstance(parsed, dict) else None
-    except json.JSONDecodeError:
-        return None
-
-
 async def analyze_query(llm: LLMPort, *, model: str, question: str) -> QueryAnalysis:
     """Decompose the question with the thinking model; degrade to a deterministic split."""
+    stage_lm = LLMPortLM(llm, model=model, prompt_template="query_analysis_v1")
     try:
-        raw = await llm.complete(
-            _PROMPT.format(question=question),
-            model=model,
-            prompt_template="query_analysis_v1",
-        )
-    except Exception as exc:  # LLMError or anything else — never break QA
+        with dspy.context(lm=stage_lm, adapter=dspy.JSONAdapter()):
+            data = await asyncio.to_thread(_decompose, question=question)
+    except Exception as exc:  # LLMError, unparseable output, anything — never break QA
         log.warning("query_analysis.llm_failed", error=str(exc), question=question[:100])
-        return _fallback(question)
-
-    data = _extract_json(raw)
-    if data is None:
-        log.warning("query_analysis.parse_failed", raw=raw[:200], question=question[:100])
         return _fallback(question)
 
     det_topic, det_directives = _deterministic_split(question)
 
-    search_query = str(data.get("search_query") or "").strip()
+    search_query = (data.search_query or "").strip()
     if not search_query or not _is_subset_of_question(search_query, question):
         # LLM drifted (added words not in the question) or returned nothing —
         # trust the deterministic strip rather than embed a hallucinated topic.
         log.info("query_analysis.search_query_rejected", llm=search_query[:80], used=det_topic[:80])
         search_query = det_topic
 
-    kw = data.get("keywords")
+    kw = data.keywords
     if isinstance(kw, list):  # models sometimes return a JSON array instead of a string
         kw = " ".join(str(x) for x in kw)
     keywords = str(kw or "").strip() or search_query
-    directives = str(data.get("answer_directives") or "").strip() or det_directives
-    passage = str(data.get("hypothetical_passage") or "").strip() or search_query
+    directives = (data.answer_directives or "").strip() or det_directives
+    passage = (data.hypothetical_passage or "").strip() or search_query
 
-    intent = data.get("intent")
+    intent = data.intent
     if intent not in ("summarize_topic", "summarize_url"):
         intent = "summarize_topic"
 
     # Deterministic URL detection wins: a 1.2B model often misses or mangles URLs.
-    url = detect_url(question) or (str(data["url"]).strip() if data.get("url") else None)
+    url = detect_url(question) or (data.url.strip() if data.url else None)
     if url:
         intent = "summarize_url"
 

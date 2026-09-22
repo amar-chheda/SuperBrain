@@ -17,7 +17,7 @@ from superbrain.settings import Settings
 class _FakeLLM:
     async def complete(self, prompt, *, model, json_mode=False,
                        prompt_template="unknown", related_entity_id=None):
-        return "This article explains MCP. [1]\nSOURCES: 1"
+        return '{"answer": "This article explains MCP. [1]"}'
 
 
 class _FakeArticleRepo:
