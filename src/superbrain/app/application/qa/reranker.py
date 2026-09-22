@@ -9,8 +9,9 @@ call, producing a calibrated signal that does separate relevant from irrelevant.
 The top reranked score becomes the answer/refuse gate, and only high-scoring
 chunks are kept as evidence — so the answer model never sees the scattered
 grab-bag that produced the "simulated society" misrepresentation. On any failure
-(LLM down, unparseable output, misaligned score count) the caller degrades to the
-RRF ordering.
+(LLM down, unparseable output, misaligned score count) the caller refuses rather
+than falling through to the unranked RRF order — a failed judge isn't evidence
+of relevance.
 """
 
 from __future__ import annotations
@@ -74,7 +75,8 @@ async def rerank(
 
     Returns scores aligned to `chunks`. On LLM error, unparseable output, or a
     score count that doesn't match the chunk count, returns fell_back=True with
-    empty scores so the caller can degrade gracefully.
+    empty scores so the caller can refuse safely instead of answering off
+    unranked evidence.
     """
     if not chunks:
         return RerankResult(scores=[], fell_back=False)

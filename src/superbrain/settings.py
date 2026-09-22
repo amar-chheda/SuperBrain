@@ -44,7 +44,10 @@ class Settings(BaseSettings):
     # SLM reranker (precision gate over the recall pool)
     qa_rerank_enabled: bool = True
     ollama_rerank_model: str = "phi3:mini"   # fast pointwise relevance judge
-    qa_rerank_pool_size: int = 12            # top fused candidates scored by the reranker
+    qa_rerank_pool_size: int = 6              # top fused candidates scored by the reranker
+    # ponytail: 12 made phi3:mini under-count its scores list often enough to trip
+    # rerank.parse_failed regularly; 6 is small enough for it to score reliably.
+    # Raise again if/when the rerank model changes, and re-check the failure rate.
     qa_min_rerank_score: float = 0.5         # refuse if the best reranked score < this
     qa_rerank_keep_score: float = 0.5        # keep chunks scoring >= this as evidence
 

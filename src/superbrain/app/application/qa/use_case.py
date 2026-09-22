@@ -170,20 +170,30 @@ class AskQuestionUseCase:
 
         latencies = {"analysis": analysis_ms, "retrieval": retrieval_ms, "rerank": rerank_ms}
 
-        # The rerank gate: refuse when nothing is actually relevant enough. This is
-        # the precision check the cosine/RRF floor cannot make.
-        if top_rerank is not None and top_rerank < s.qa_min_rerank_score:
-            reason = (
-                f"No sufficiently relevant evidence — best relevance {top_rerank:.2f} "
-                f"< {s.qa_min_rerank_score} (reranked {len(fused)} candidates)"
-            )
-            self._metrics.increment("qa_aborted_low_rerank_total")
+        # The rerank gate: refuse when nothing is actually relevant enough, or when
+        # the reranker itself failed to judge the pool. A failed judge is not
+        # evidence of relevance — fail closed rather than falling through to the
+        # unranked RRF order (the weak signal this stage exists to filter out).
+        if rerank_fell_back or (top_rerank is not None and top_rerank < s.qa_min_rerank_score):
+            if rerank_fell_back:
+                reason = (
+                    f"Reranker failed to judge relevance for {len(fused)} candidates — "
+                    "refusing rather than answering off unranked evidence"
+                )
+                self._metrics.increment("qa_aborted_rerank_failed_total")
+            else:
+                reason = (
+                    f"No sufficiently relevant evidence — best relevance {top_rerank:.2f} "
+                    f"< {s.qa_min_rerank_score} (reranked {len(fused)} candidates)"
+                )
+                self._metrics.increment("qa_aborted_low_rerank_total")
             return await self._abort(
                 question, reason,
                 stage_latencies=latencies,
                 gate={"decision": "refuse", "stage": "rerank", "reason": reason,
                       "best_vector": round(best_vector, 4), "best_bm25": round(best_bm25, 4),
-                      "top_rerank": round(top_rerank, 4), "rerank_fell_back": rerank_fell_back},
+                      "top_rerank": round(top_rerank, 4) if top_rerank is not None else None,
+                      "rerank_fell_back": rerank_fell_back},
                 trace_parts=(analysis, question, vector_lists, bm25_chunks, fused, [],
                              rerank_by_id, rerank_fell_back),
             )
