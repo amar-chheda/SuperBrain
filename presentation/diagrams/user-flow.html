@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Superbrain — User Flow</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      margin-bottom: 2rem;
+    }
+    
+    .header-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .pulse-dot {
+      width: 12px;
+      height: 12px;
+      background: #22d3ee;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+    }
+    
+    .subtitle {
+      color: #94a3b8;
+      font-size: 0.875rem;
+      margin-left: 1.75rem;
+    }
+    
+    .diagram-container {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 1rem;
+      border: 1px solid #1e293b;
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+    
+    svg {
+      width: 100%;
+      min-width: 900px;
+      display: block;
+    }
+    
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    
+    .card {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 0.75rem;
+      border: 1px solid #1e293b;
+      padding: 1.25rem;
+    }
+    
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    
+    .card-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    
+    .card h3 {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+    
+    .card ul {
+      list-style: none;
+      color: #94a3b8;
+      font-size: 0.75rem;
+    }
+    
+    .card li {
+      margin-bottom: 0.375rem;
+    }
+    
+    .footer {
+      text-align: center;
+      margin-top: 1.5rem;
+      color: #475569;
+      font-size: 0.75rem;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 0.5rem;
+      margin-left: auto;
+      flex-shrink: 0;
+      align-items: center;
+    }
+    .toolbar-toggle {
+      background: transparent;
+      border: none;
+      color: #475569;
+      cursor: pointer;
+      font-size: 1.25rem;
+      line-height: 1;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.375rem;
+      transition: color 0.2s, background 0.2s;
+    }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions {
+      display: none;
+      gap: 0.5rem;
+    }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 0.375rem 0.75rem;
+      border-radius: 0.375rem;
+      font-family: inherit;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .toolbar-actions button:hover {
+      background: rgba(51, 65, 85, 0.8);
+      color: white;
+      border-color: #475569;
+    }
+
+    @media print {
+      body { background: #020617; padding: 1rem; }
+      .toolbar { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Superbrain — User Flow</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 Copy</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">Ingest and ask paths, the safety gates, and the rows each stage writes for observability</p>
+    </div>
+
+    <!-- Main Diagram -->
+    <div class="diagram-container">
+      <svg viewBox="0 0 1200 660" xmlns="http://www.w3.org/2000/svg" font-family="'JetBrains Mono', monospace"><defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern></defs><rect width="1200" height="660" fill="#020617"/><rect width="1200" height="660" fill="url(#grid)"/><path d="M150,77 L168,77" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M298,77 L316,77" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M446,77 L464,77" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M594,77 L612,77" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M742,77 L760,77" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M890,77 L908,77" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M1038,77 L1056,77" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M150,215 L168,215" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M298,215 L316,215" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M446,215 L464,215" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M594,215 L612,215" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M742,215 L760,215" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M890,215 L908,215" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M1038,215 L1056,215" fill="none" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrowhead)"/><path d="M529,258 L529,275 L600,275 L600,292" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/><path d="M825,258 L825,275 L740,275 L740,292" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/><path d="M8,77 L8,392 L1192,392" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4"/><path d="M233,258 L233,392" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4"/><path d="M660,336 L660,392" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4"/><path d="M973,258 L973,392" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4"/><path d="M130,392 L130,404" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/><path d="M366,392 L366,404" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/><path d="M602,392 L602,404" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/><path d="M838,392 L838,404" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/><path d="M1074,392 L1074,404" fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/><path d="M366,480 L366,530" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/><path d="M602,480 L602,530" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/><path d="M838,480 L838,530" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/><text x="20" y="22" fill="#22d3ee" font-size="11" text-anchor="start" font-weight="600">INGEST — user drops a link, text or PDF</text><rect x="20" y="34" width="130" height="86" rx="6" fill="#0f172a"/><rect x="20" y="34" width="130" height="86" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/><text x="85.0" y="68.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Client</text><text x="85.0" y="84.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">Telegram · REST</text><text x="85.0" y="97.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">CLI · URL/text/PDF</text><rect x="168" y="34" width="130" height="86" rx="6" fill="#0f172a"/><rect x="168" y="34" width="130" height="86" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="233.0" y="68.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Job queued</text><text x="233.0" y="84.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">ingestion_jobs row</text><text x="233.0" y="97.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">BackgroundTask</text><rect x="316" y="34" width="130" height="86" rx="6" fill="#0f172a"/><rect x="316" y="34" width="130" height="86" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="381.0" y="68.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Crawl</text><text x="381.0" y="84.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">httpx → Spider</text><text x="381.0" y="97.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">text extractor</text><rect x="464" y="34" width="130" height="86" rx="6" fill="#0f172a"/><rect x="464" y="34" width="130" height="86" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="529.0" y="68.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Dedup</text><text x="529.0" y="84.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">canonical URL</text><text x="529.0" y="97.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">SHA-256 of text</text><rect x="612" y="34" width="130" height="86" rx="6" fill="#0f172a"/><rect x="612" y="34" width="130" height="86" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/><text x="677.0" y="61.5" fill="white" font-size="13" font-weight="600" text-anchor="middle">Chunk agent</text><text x="677.0" y="77.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">llama3.1:8b picks</text><text x="677.0" y="90.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">semantic·recursive</text><text x="677.0" y="103.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">·fixed (tiktoken)</text><rect x="760" y="34" width="130" height="86" rx="6" fill="#0f172a"/><rect x="760" y="34" width="130" height="86" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/><text x="825.0" y="68.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Embed</text><text x="825.0" y="84.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">nomic-embed-text</text><text x="825.0" y="97.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">768-d, 1 batch call</text><rect x="908" y="34" width="130" height="86" rx="6" fill="#0f172a"/><rect x="908" y="34" width="130" height="86" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="973.0" y="68.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Store</text><text x="973.0" y="84.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">Postgres+pgvector</text><text x="973.0" y="97.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">chunks · tsvector</text><rect x="1056" y="34" width="130" height="86" rx="6" fill="#0f172a"/><rect x="1056" y="34" width="130" height="86" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/><text x="1121.0" y="68.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Classify</text><text x="1121.0" y="84.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">phi3:mini</text><text x="1121.0" y="97.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">integer-index topic</text><text x="20" y="158" fill="#34d399" font-size="11" text-anchor="start" font-weight="600">ASK — user messages a question (or pastes a URL: intent=summarize_url skips recall, reads that article's chunks directly)</text><rect x="20" y="172" width="130" height="86" rx="6" fill="#0f172a"/><rect x="20" y="172" width="130" height="86" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/><text x="85.0" y="206.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Question</text><text x="85.0" y="222.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">Telegram · POST /qa</text><text x="85.0" y="235.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">one or many asks</text><rect x="168" y="172" width="130" height="86" rx="6" fill="#0f172a"/><rect x="168" y="172" width="130" height="86" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/><text x="233.0" y="199.5" fill="white" font-size="13" font-weight="600" text-anchor="middle">Analyse</text><text x="233.0" y="215.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">lfm2.5-thinking</text><text x="233.0" y="228.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">1.2b: intent, query,</text><text x="233.0" y="241.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">keywords + HyDE</text><rect x="316" y="172" width="130" height="86" rx="6" fill="#0f172a"/><rect x="316" y="172" width="130" height="86" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="381.0" y="199.5" fill="white" font-size="13" font-weight="600" text-anchor="middle">Hybrid recall</text><text x="381.0" y="215.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">pgvector cosine ×2</text><text x="381.0" y="228.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">(query + HyDE)</text><text x="381.0" y="241.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">+ BM25 ts_rank_cd</text><rect x="464" y="172" width="130" height="86" rx="6" fill="#0f172a"/><rect x="464" y="172" width="130" height="86" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/><text x="529.0" y="206.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Recall floor</text><text x="529.0" y="222.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">both legs weak</text><text x="529.0" y="235.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">→ topic not in KB</text><rect x="612" y="172" width="130" height="86" rx="6" fill="#0f172a"/><rect x="612" y="172" width="130" height="86" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="677.0" y="206.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">RRF fusion</text><text x="677.0" y="222.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">reciprocal rank</text><text x="677.0" y="235.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">fusion → pool of 12</text><rect x="760" y="172" width="130" height="86" rx="6" fill="#0f172a"/><rect x="760" y="172" width="130" height="86" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/><text x="825.0" y="199.5" fill="white" font-size="13" font-weight="600" text-anchor="middle">Rerank gate</text><text x="825.0" y="215.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">phi3:mini, 1 call</text><text x="825.0" y="228.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">per passage; ≥0.5</text><text x="825.0" y="241.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">kept as evidence</text><rect x="908" y="172" width="130" height="86" rx="6" fill="#0f172a"/><rect x="908" y="172" width="130" height="86" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/><text x="973.0" y="206.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Answer</text><text x="973.0" y="222.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">llama3.1:8b · DSPy</text><text x="973.0" y="235.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">grounded, [n] cites</text><rect x="1056" y="172" width="130" height="86" rx="6" fill="#0f172a"/><rect x="1056" y="172" width="130" height="86" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/><text x="1121.0" y="206.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">Reply</text><text x="1121.0" y="222.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">answer + citations</text><text x="1121.0" y="235.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">Telegram / API</text><rect x="470" y="292" width="380" height="44" rx="6" fill="#0f172a"/><rect x="470" y="292" width="380" height="44" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,3"/><text x="660.0" y="311.5" fill="white" font-size="13" font-weight="600" text-anchor="middle">Refuse safely</text><text x="660.0" y="327.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">no evidence, or reranker failed → fail closed, never guess</text><text x="250" y="372" fill="#fb7185" font-size="11" text-anchor="start" font-weight="600">OBSERVABILITY — every stage leaves a row</text><text x="1188" y="386" fill="#fb7185" font-size="9.5" text-anchor="end" font-weight="400">write path ▸</text><rect x="20" y="404" width="220" height="76" rx="6" fill="#0f172a"/><rect x="20" y="404" width="220" height="76" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/><text x="130.0" y="433.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">structlog + request_id</text><text x="130.0" y="449.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">JSON logs; X-Request-ID</text><text x="130.0" y="462.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">bound to every line</text><rect x="256" y="404" width="220" height="76" rx="6" fill="#0f172a"/><rect x="256" y="404" width="220" height="76" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="366.0" y="426.5" fill="white" font-size="13" font-weight="600" text-anchor="middle">model_call_logs</text><text x="366.0" y="442.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">every LLM call: model,</text><text x="366.0" y="455.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">prompt, response, ms,</text><text x="366.0" y="468.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">retries, status</text><rect x="492" y="404" width="220" height="76" rx="6" fill="#0f172a"/><rect x="492" y="404" width="220" height="76" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="602.0" y="426.5" fill="white" font-size="13" font-weight="600" text-anchor="middle">query_logs</text><text x="602.0" y="442.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">question, answer, abort</text><text x="602.0" y="455.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">reason, stage latencies,</text><text x="602.0" y="468.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">retrieval_trace JSONB</text><rect x="728" y="404" width="220" height="76" rx="6" fill="#0f172a"/><rect x="728" y="404" width="220" height="76" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="838.0" y="426.5" fill="white" font-size="13" font-weight="600" text-anchor="middle">ingestion_jobs</text><text x="838.0" y="442.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">state per job; trace at</text><text x="838.0" y="455.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">/observability/jobs/{id}</text><text x="838.0" y="468.5" fill="#94a3b8" font-size="10.5" text-anchor="middle"> /trace</text><rect x="964" y="404" width="220" height="76" rx="6" fill="#0f172a"/><rect x="964" y="404" width="220" height="76" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/><text x="1074.0" y="433.0" fill="white" font-size="13" font-weight="600" text-anchor="middle">InMemoryMetrics</text><text x="1074.0" y="449.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">counters + p50/p95/p99</text><text x="1074.0" y="462.0" fill="#94a3b8" font-size="10.5" text-anchor="middle">qa_aborted_*_total</text><rect x="20" y="530" width="1164" height="66" rx="6" fill="#0f172a"/><rect x="20" y="530" width="1164" height="66" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/><text x="602.0" y="560.5" fill="white" font-size="13" font-weight="600" text-anchor="middle">Grafana :3000 — provisioned dashboard, plain SQL over the same Postgres</text><text x="602.0" y="576.5" fill="#94a3b8" font-size="10.5" text-anchor="middle">ingestion status · LLM latency + failures · QA abort rate · LLM call inspector (prompt/response) · retrieval trace (vector vs BM25 hits)</text><text x="484" y="514" fill="#a78bfa" font-size="9.5" text-anchor="middle" font-weight="400">SQL panels read these tables</text><rect x="20" y="630" width="16" height="10" rx="2" fill="rgba(8,51,68,0.4)" stroke="#22d3ee"/><text x="42" y="639" fill="#94a3b8" font-size="10.5">Client / output</text><rect x="167.0" y="630" width="16" height="10" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399"/><text x="189.0" y="639" fill="#94a3b8" font-size="10.5">Backend step</text><rect x="294.2" y="630" width="16" height="10" rx="2" fill="rgba(120,53,15,0.3)" stroke="#fbbf24"/><text x="316.2" y="639" fill="#94a3b8" font-size="10.5">Local model / tokenizer</text><rect x="494.0" y="630" width="16" height="10" rx="2" fill="rgba(76,29,149,0.4)" stroke="#a78bfa"/><text x="516.0" y="639" fill="#94a3b8" font-size="10.5">Postgres</text><rect x="594.8" y="630" width="16" height="10" rx="2" fill="rgba(251,146,60,0.3)" stroke="#fb923c"/><text x="616.8" y="639" fill="#94a3b8" font-size="10.5">LLM gateway</text><rect x="715.4" y="630" width="16" height="10" rx="2" fill="rgba(136,19,55,0.4)" stroke="#fb7185"/><text x="737.4" y="639" fill="#94a3b8" font-size="10.5">Gate / observability</text></svg>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="cards"><div class="card"><div class="card-header"><div class="card-dot cyan"></div><h3>Ingest</h3></div><ul><li>• URL, text or PDF becomes a job; crawl, dedup, chunk, embed, store</li><li>• llama3.1:8b chooses the chunking strategy per article</li><li>• phi3:mini classifies against integer topic IDs</li></ul></div><div class="card"><div class="card-header"><div class="card-dot emerald"></div><h3>Ask</h3></div><ul><li>• lfm2.5-thinking:1.2b splits the ask and writes a HyDE passage</li><li>• Vector + BM25 recall, fused with RRF, judged by phi3:mini</li><li>• llama3.1:8b answers only from kept evidence, with citations</li></ul></div><div class="card"><div class="card-header"><div class="card-dot rose"></div><h3>Fail closed</h3></div><ul><li>• Weak recall or a failed reranker refuses instead of guessing</li><li>• Refusals are logged as aborted queries with the reason</li><li>• Same rows feed the Grafana dashboard</li></ul></div></div>
+
+    <!-- Footer -->
+    <p class="footer">
+      Superbrain • local-only RAG • Ollama + Postgres/pgvector
+    </p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '✓ Copied!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'diagram.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('diagram.pdf');
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>
